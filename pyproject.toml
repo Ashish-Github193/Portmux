@@ -1,7 +1,7 @@
 [project]
 name = "portmux"
 version = "0.1.0"
-description = "Add your description here"
+description = "PortMUX will be a command-line **TUI tool** for orchestrating, monitoring, and dynamically managing multiple SSH port-forwarding sessions using **tmux** as the execution layer. It abstracts tmux complexity and focuses on **port-based workflows**, letting users create, refresh, remove, and inspect forwards without manual command composition."
 readme = "README.md"
 authors = [
     { name = "Ashish Kumar Jha", email = "79639825+Ashish-Github193@users.noreply.github.com" }
@@ -26,4 +26,7 @@ dev = [
     "pytest>=8.4.1",
     "pytest-mock>=3.14.1",
     "pytest-cov>=6.0.0",
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "autoflake>=2.3.1",
 ]
