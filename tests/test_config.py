@@ -56,7 +56,10 @@ class TestLoadConfigBasic:
 
         result = load_config()
 
-        assert result == DEFAULT_CONFIG
+        expected = DEFAULT_CONFIG.copy()
+        expected["startup"] = {"auto_execute": True, "commands": []}
+        expected["profiles"] = {}
+        assert result == expected
 
     def test_load_config_success(self, mocker):
         config_content = 'session_name = "custom-session"'
@@ -77,6 +80,8 @@ class TestLoadConfigBasic:
 
         expected = DEFAULT_CONFIG.copy()
         expected["session_name"] = "custom-session"
+        expected["startup"] = {"auto_execute": True, "commands": []}
+        expected["profiles"] = {}
         assert result == expected
 
 

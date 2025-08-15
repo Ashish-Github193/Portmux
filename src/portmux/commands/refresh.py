@@ -9,22 +9,40 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..config import load_config
 from ..forwards import list_forwards, refresh_forward
 from ..session import session_exists
+from ..startup import execute_startup_commands, startup_commands_enabled
 from ..utils import handle_error
 
 console = Console()
+
+
+def _handle_startup_reload(config: dict, session_name: str, verbose: bool) -> None:
+    """Handle startup command reload after refresh."""
+    if startup_commands_enabled(config):
+        if verbose:
+            console.print("[blue]Re-executing startup commands...[/blue]")
+        
+        startup_success = execute_startup_commands(config, session_name, verbose)
+        if startup_success:
+            console.print("[green]Startup commands executed successfully[/green]")
+        else:
+            console.print("[yellow]Some startup commands failed[/yellow]")
+    elif verbose:
+        console.print("[blue]No startup commands configured for reload[/blue]")
 
 
 @click.command()
 @click.argument("name", required=False)
 @click.option("--all", "refresh_all", is_flag=True, help="Refresh all forwards")
 @click.option("--delay", type=float, help="Delay between kill and recreate (seconds)")
+@click.option("--reload-startup", is_flag=True, help="Re-execute startup commands after refresh")
 @click.pass_context
-def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float):
+def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float, reload_startup: bool):
     """Refresh SSH port forwards by recreating them.
 
     NAME: Forward name to refresh (e.g., 'L:8080:localhost:80')
 
     Useful for reconnecting after network issues or server restarts.
+    Optionally re-execute startup commands after refreshing forwards.
 
     Examples:
 
@@ -33,6 +51,8 @@ def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float):
         portmux refresh --all                 # Refresh all forwards
 
         portmux refresh --all --delay 2       # Refresh with 2 second delay
+
+        portmux refresh --all --reload-startup # Refresh and re-run startup commands
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
@@ -104,6 +124,11 @@ def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float):
             console.print(
                 f"[green]Successfully refreshed {refreshed_count}/{len(forwards)} forward(s)[/green]"
             )
+            
+            # Handle startup reload for refresh all
+            if reload_startup:
+                _handle_startup_reload(config, session_name, verbose)
+            
             return
 
         # Handle single forward refresh
@@ -122,6 +147,10 @@ def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float):
 
         refresh_forward(name, session_name)
         console.print(f"[green]Successfully refreshed forward '{name}'[/green]")
+        
+        # Handle startup reload for single forward
+        if reload_startup:
+            _handle_startup_reload(config, session_name, verbose)
 
     except Exception as e:
         handle_error(e)

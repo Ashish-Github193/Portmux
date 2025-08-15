@@ -25,7 +25,7 @@ class TestMainCLI:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "1.1.2" in result.output
 
     def test_global_options_passed_to_context(self):
         CliRunner()

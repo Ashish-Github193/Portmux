@@ -1,0 +1,144 @@
+# PortMUX Configuration Example
+# Copy this file to ~/.portmux/config.toml and customize as needed
+
+# =============================================================================
+# General Configuration
+# =============================================================================
+[general]
+# Default tmux session name for PortMUX
+session_name = "portmux"
+
+# Default SSH identity file (will auto-detect if not specified)
+default_identity = "~/.ssh/id_rsa"
+
+# Delay in seconds between killing and recreating connections during refresh
+reconnect_delay = 1
+
+# Maximum number of retry attempts for failed connections
+max_retries = 3
+
+# =============================================================================
+# Startup Commands
+# =============================================================================
+# These commands are executed automatically when you run 'portmux init'
+# and can be re-executed with 'portmux refresh --reload-startup'
+[startup]
+# Set to false to disable automatic startup command execution
+auto_execute = true
+
+# List of commands to execute on startup
+# These should be valid portmux commands
+commands = [
+    # Example: Forward local port 8080 to remote port 80
+    "portmux add L 8080:localhost:80 user@your-server.com",
+    
+    # Example: Forward remote port 9000 to local port 3000
+    "portmux add R 9000:localhost:3000 user@your-server.com",
+    
+    # Example: Forward with custom SSH key
+    # "portmux add L 5432:database:5432 user@db-server -i ~/.ssh/db_key",
+]
+
+# =============================================================================
+# Development Profile
+# =============================================================================
+# Use with: portmux init --profile development
+[profiles.development]
+# Custom session name for development environment
+session_name = "portmux-dev"
+
+# Development-specific commands
+commands = [
+    "portmux add L 3000:localhost:3000 dev-user@dev-server.com",
+    "portmux add L 5432:db.dev:5432 dev-user@dev-server.com",
+    "portmux add L 6379:redis.dev:6379 dev-user@dev-server.com",
+    "portmux add L 8080:api.dev:8080 dev-user@dev-server.com",
+]
+
+# =============================================================================
+# Staging Profile  
+# =============================================================================
+# Use with: portmux init --profile staging
+[profiles.staging]
+session_name = "portmux-staging"
+
+# Staging-specific SSH key
+default_identity = "~/.ssh/staging_key"
+
+commands = [
+    "portmux add L 3000:app.staging:3000 staging-user@staging-server.com",
+    "portmux add L 5432:db.staging:5432 staging-user@staging-server.com",
+]
+
+# =============================================================================
+# Production Profile
+# =============================================================================
+# Use with: portmux init --profile production
+[profiles.production]
+session_name = "portmux-prod"
+
+# Production-specific SSH key (recommended)
+default_identity = "~/.ssh/production_key"
+
+commands = [
+    # Database tunnel for production access
+    "portmux add L 5432:prod-db.internal:5432 prod-user@bastion.company.com",
+    
+    # API access tunnel
+    "portmux add L 8443:api.internal:443 prod-user@bastion.company.com",
+    
+    # Reverse tunnel for local development against prod
+    "portmux add R 9090:localhost:9090 prod-user@bastion.company.com",
+]
+
+# =============================================================================
+# Additional Profile Examples
+# =============================================================================
+
+# Client-specific profile
+[profiles.client-alpha]
+session_name = "portmux-alpha"
+commands = [
+    "portmux add L 8080:alpha.client.com:80 user@alpha-gateway.com",
+    "portmux add L 3306:db.alpha.client.com:3306 user@alpha-gateway.com",
+]
+
+# Remote work profile
+[profiles.remote]
+session_name = "portmux-remote"
+commands = [
+    # VPN-like access to office network
+    "portmux add L 22:office-workstation:22 user@office-gateway.com",
+    "portmux add L 80:internal-webapp:80 user@office-gateway.com",
+    "portmux add L 3389:windows-machine:3389 user@office-gateway.com",
+]
+
+# =============================================================================
+# Usage Tips
+# =============================================================================
+#
+# 1. Basic Usage:
+#    mkdir -p ~/.portmux
+#    cp config/config.toml.example ~/.portmux/config.toml
+#    # Edit the file with your settings
+#    portmux init
+#
+# 2. Profile Usage:
+#    portmux init --profile development
+#    portmux profile list
+#    portmux profile show production
+#    portmux profile active
+#
+# 3. Startup Command Management:
+#    portmux init --no-startup           # Skip startup commands
+#    portmux refresh --reload-startup    # Re-run startup commands
+#
+# 4. SSH Key Management:
+#    # Use different SSH keys per profile
+#    # Specify keys in profiles or use -i flag in commands
+#
+# 5. Session Management:
+#    # Each profile can have its own tmux session
+#    # This allows running multiple environments simultaneously
+#
+# =============================================================================
