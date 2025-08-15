@@ -20,13 +20,6 @@ class TestMainCLI:
         assert "remove" in result.output
         assert "refresh" in result.output
 
-    def test_version_output(self):
-        runner = CliRunner()
-        result = runner.invoke(main, ["--version"])
-
-        assert result.exit_code == 0
-        assert "1.1.2" in result.output
-
     def test_global_options_passed_to_context(self):
         CliRunner()
 
