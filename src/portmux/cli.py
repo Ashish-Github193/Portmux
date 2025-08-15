@@ -38,7 +38,7 @@ def main(ctx: click.Context, verbose: bool, session: str, config: Optional[str])
 
 
 # Import and register command modules
-from .commands import add, init
+from .commands import add, init, profile
 from .commands import list as list_cmd
 from .commands import refresh, remove, status
 
@@ -48,6 +48,7 @@ main.add_command(add.add)
 main.add_command(list_cmd.list)
 main.add_command(remove.remove)
 main.add_command(refresh.refresh)
+main.add_command(profile.profile)
 
 
 if __name__ == "__main__":

@@ -54,6 +54,102 @@ portmux refresh L:8080:localhost:80
   - Example: `portmux add R 9000:localhost:3000 user@server.com`
   - Remote machine can access your local port 3000 by connecting to its port 9000
 
+## Configuration
+
+PortMUX supports advanced configuration through a TOML file that enables startup commands, profiles, and custom settings.
+
+### Configuration File Location
+
+Place your configuration file at: `~/.portmux/config.toml`
+
+### Quick Setup
+
+```bash
+# Create the configuration directory
+mkdir -p ~/.portmux
+
+# Copy the sample configuration
+cp config/config.toml.example ~/.portmux/config.toml
+
+# Edit the configuration with your settings
+nano ~/.portmux/config.toml
+
+# Initialize with your configuration
+portmux init
+```
+
+### Basic Configuration
+
+```toml
+[general]
+session_name = "portmux"
+default_identity = "~/.ssh/id_rsa"
+reconnect_delay = 1
+max_retries = 3
+
+[startup]
+auto_execute = true
+commands = [
+    "portmux add L 8080:localhost:80 user@server.com",
+    "portmux add R 9000:localhost:3000 user@server.com"
+]
+```
+
+### Profile-Based Workflows
+
+PortMUX supports profiles for different environments:
+
+```bash
+# Initialize with development profile
+portmux init --profile development
+
+# Initialize with production profile  
+portmux init --profile production
+
+# List available profiles
+portmux profile list
+
+# Show profile details
+portmux profile show development
+
+# Check currently active profile
+portmux profile active
+```
+
+### Example Profile Configuration
+
+```toml
+[profiles.development]
+session_name = "portmux-dev"
+commands = [
+    "portmux add L 3000:db.dev:5432 dev-user@dev-server.com",
+    "portmux add L 8080:api.dev:8080 dev-user@dev-server.com"
+]
+
+[profiles.production]
+session_name = "portmux-prod"
+default_identity = "~/.ssh/prod_key"
+commands = [
+    "portmux add L 5432:prod-db:5432 prod-user@prod-server.com",
+    "portmux add R 9090:localhost:9090 prod-user@prod-server.com"
+]
+```
+
+### Advanced Features
+
+```bash
+# Skip startup commands during initialization
+portmux init --no-startup
+
+# Re-execute startup commands after refresh
+portmux refresh --reload-startup
+
+# Use custom configuration file
+portmux --config /path/to/config.toml init
+```
+
+For a complete configuration example with all available options, see [`config/config.toml.example`](config/config.toml.example).
+
 ## Requirements
 
 - Python 3.10 or higher
@@ -64,9 +160,10 @@ portmux refresh L:8080:localhost:80
 
 This project is built in phases:
 
-- **Phase 1**: Core tmux and SSH management ( Complete)
-- **Phase 2**: Command-line interface ( Complete)  
-- **Phase 3**: Text user interface (TUI) - Coming soon
+- **Phase 1**: Core tmux and SSH management (✅ Complete)
+- **Phase 2**: Command-line interface (✅ Complete)  
+- **Phase 3**: Smart Configuration & Startup Automation (✅ Complete)
+- **Phase 4**: Text user interface (TUI) - Coming soon
 
 ## Testing
 
