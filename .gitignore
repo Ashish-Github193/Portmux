@@ -15,3 +15,6 @@ wheels/
 
 # claude
 .claude
+
+# uv
+uv.lock
