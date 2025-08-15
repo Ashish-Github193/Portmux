@@ -57,7 +57,7 @@ portmux refresh L:8080:localhost:80
 ## Requirements
 
 - Python 3.10 or higher
-- tmux installed on your system
+- tmux installed on your system (works well with tmux version 3.5a)
 - SSH access to remote servers
 
 ## Development
