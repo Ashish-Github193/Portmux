@@ -1,6 +1,6 @@
 [project]
 name = "portmux"
-version = "0.1.0"
+version = "0.1.1"
 description = "PortMUX will be a command-line **TUI tool** for orchestrating, monitoring, and dynamically managing multiple SSH port-forwarding sessions using **tmux** as the execution layer. It abstracts tmux complexity and focuses on **port-based workflows**, letting users create, refresh, remove, and inspect forwards without manual command composition."
 readme = "README.md"
 authors = [
