@@ -4,7 +4,7 @@ A simple tool to manage SSH port forwards using tmux.
 
 ## What is PortMUX?
 
-PortMUX helps you create and manage SSH port forwards without dealing with tmux commands directly. It keeps all your port forwards running in one tmux session that survives when you close your terminal.
+PortMUX wraps around tmux and helps you create and manage SSH port forwards without directly handling tmux commands. It keeps all your port forwards running within a single tmux session, which remains active even after you close your terminal. PortMUX provides a rich command-line interface that allows users to initialize, add, remove, and refresh sessions. Users can also define profiles by creating TOML files. PortMUX utilizes these files to instantiate SSH sessions based on the environment using the corresponding id_rsa keys.
 
 ## What it does
 
