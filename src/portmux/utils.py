@@ -79,7 +79,7 @@ def create_forwards_table(
 
         if include_status:
             # Simple status based on tmux window flags
-            status = "Active" if not forward.get("status", "") else "Running"
+            status = "Running"
             row.append(status)
 
         table.add_row(*row)
