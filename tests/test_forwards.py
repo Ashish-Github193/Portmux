@@ -6,38 +6,24 @@ import pytest
 from portmux.exceptions import SSHError, TmuxError
 from portmux.forwards import (add_forward, list_forwards, parse_port_spec,
                               refresh_forward, remove_forward)
+from portmux.models import ForwardInfo, ParsedSpec
 
 
 class TestParsePortSpec:
     def test_parse_valid_spec(self):
         result = parse_port_spec("8080:localhost:80")
 
-        expected = {
-            "local_port": "8080",
-            "remote_host": "localhost",
-            "remote_port": "80",
-        }
-        assert result == expected
+        assert result == ParsedSpec(local_port=8080, remote_host="localhost", remote_port=80)
 
     def test_parse_with_ip_address(self):
         result = parse_port_spec("9000:192.168.1.10:443")
 
-        expected = {
-            "local_port": "9000",
-            "remote_host": "192.168.1.10",
-            "remote_port": "443",
-        }
-        assert result == expected
+        assert result == ParsedSpec(local_port=9000, remote_host="192.168.1.10", remote_port=443)
 
     def test_parse_with_hostname(self):
         result = parse_port_spec("3000:example.com:22")
 
-        expected = {
-            "local_port": "3000",
-            "remote_host": "example.com",
-            "remote_port": "22",
-        }
-        assert result == expected
+        assert result == ParsedSpec(local_port=3000, remote_host="example.com", remote_port=22)
 
     def test_parse_invalid_format_missing_colon(self):
         with pytest.raises(
@@ -221,20 +207,8 @@ class TestListForwards:
         result = list_forwards()
 
         expected = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "ssh",
-            },
-            {
-                "name": "R:9000:localhost:9000",
-                "direction": "R",
-                "spec": "9000:localhost:9000",
-                "status": "*",
-                "command": "ssh",
-            },
+            ForwardInfo(name="L:8080:localhost:80", direction="L", spec="8080:localhost:80", status="-", command="ssh"),
+            ForwardInfo(name="R:9000:localhost:9000", direction="R", spec="9000:localhost:9000", status="*", command="ssh"),
         ]
         assert result == expected
         mock_list_windows.assert_called_once_with("portmux")
@@ -256,13 +230,7 @@ class TestListForwards:
         result = list_forwards("custom-session")
 
         expected = [
-            {
-                "name": "L:3000:localhost:3000",
-                "direction": "L",
-                "spec": "3000:localhost:3000",
-                "status": "-",
-                "command": "ssh",
-            }
+            ForwardInfo(name="L:3000:localhost:3000", direction="L", spec="3000:localhost:3000", status="-", command="ssh"),
         ]
         assert result == expected
         mock_list_windows.assert_called_once_with("custom-session")
@@ -284,13 +252,13 @@ class TestRefreshForward:
     def test_refresh_forward_success(self, mocker):
         mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
         mock_list_forwards.return_value = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "ssh -N -L 8080:localhost:80 user@host",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="ssh -N -L 8080:localhost:80 user@host",
+            )
         ]
         mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
         mock_remove_forward.return_value = True
@@ -309,13 +277,13 @@ class TestRefreshForward:
     def test_refresh_forward_with_identity(self, mocker):
         mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
         mock_list_forwards.return_value = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "ssh -N -L 8080:localhost:80 -i /path/to/key user@host",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="ssh -N -L 8080:localhost:80 -i /path/to/key user@host",
+            )
         ]
         mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
         mock_remove_forward.return_value = True
@@ -339,13 +307,13 @@ class TestRefreshForward:
     def test_refresh_forward_invalid_command(self, mocker):
         mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
         mock_list_forwards.return_value = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "bash",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="bash",
+            )
         ]
 
         with pytest.raises(
@@ -356,13 +324,13 @@ class TestRefreshForward:
     def test_refresh_forward_custom_session(self, mocker):
         mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
         mock_list_forwards.return_value = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "ssh -N -L 8080:localhost:80 user@host",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="ssh -N -L 8080:localhost:80 user@host",
+            )
         ]
         mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
         mock_remove_forward.return_value = True
@@ -383,13 +351,13 @@ class TestRefreshForward:
     def test_refresh_forward_add_fails(self, mocker):
         mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
         mock_list_forwards.return_value = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "-",
-                "command": "ssh -N -L 8080:localhost:80 user@host",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="ssh -N -L 8080:localhost:80 user@host",
+            )
         ]
         mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
         mock_remove_forward.return_value = True

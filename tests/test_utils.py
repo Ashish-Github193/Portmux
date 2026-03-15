@@ -5,6 +5,7 @@ from unittest.mock import patch
 import click
 import pytest
 
+from portmux.models import ForwardInfo
 from portmux.utils import (confirm_destructive_action, create_forwards_table,
                            init_session_if_needed, validate_direction,
                            validate_port_spec)
@@ -77,12 +78,13 @@ class TestCreateForwardsTable:
 
     def test_forwards_with_status(self):
         forwards = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="",
+                command="ssh",
+            )
         ]
 
         table = create_forwards_table(forwards, include_status=True)
@@ -91,12 +93,13 @@ class TestCreateForwardsTable:
 
     def test_forwards_without_status(self):
         forwards = [
-            {
-                "name": "L:8080:localhost:80",
-                "direction": "L",
-                "spec": "8080:localhost:80",
-                "status": "",
-            }
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="",
+                command="ssh",
+            )
         ]
 
         table = create_forwards_table(forwards, include_status=False)

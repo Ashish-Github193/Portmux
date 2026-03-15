@@ -6,6 +6,8 @@ from click.testing import CliRunner
 
 from portmux.commands.profile import profile
 from portmux.exceptions import ConfigError
+from portmux.models import PortmuxConfig, ProfileConfig
+from portmux.output import Output
 
 
 class TestProfileListCommand:
@@ -16,7 +18,9 @@ class TestProfileListCommand:
     @patch("portmux.commands.profile.list_available_profiles")
     @patch("portmux.commands.profile.profile_summary")
     def test_profile_list_success(self, mock_summary, mock_list_profiles, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}, "prod": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={
+            "dev": ProfileConfig(), "prod": ProfileConfig()
+        })
         mock_list_profiles.return_value = ["dev", "prod"]
         mock_summary.return_value = {
             "total_profiles": 2,
@@ -40,7 +44,7 @@ class TestProfileListCommand:
         result = self.runner.invoke(
             profile,
             ["list"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -51,13 +55,13 @@ class TestProfileListCommand:
     @patch("portmux.commands.profile.load_config")
     @patch("portmux.commands.profile.list_available_profiles")
     def test_profile_list_empty(self, mock_list_profiles, mock_load_config):
-        mock_load_config.return_value = {"profiles": {}}
+        mock_load_config.return_value = PortmuxConfig(profiles={})
         mock_list_profiles.return_value = []
 
         result = self.runner.invoke(
             profile,
             ["list"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -70,7 +74,7 @@ class TestProfileListCommand:
         result = self.runner.invoke(
             profile,
             ["list"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 1
@@ -84,7 +88,7 @@ class TestProfileShowCommand:
     @patch("portmux.commands.profile.profile_exists")
     @patch("portmux.commands.profile.get_profile_info")
     def test_profile_show_success(self, mock_get_info, mock_exists, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={"dev": ProfileConfig()})
         mock_exists.return_value = True
         mock_get_info.return_value = {
             "name": "dev",
@@ -102,7 +106,7 @@ class TestProfileShowCommand:
         result = self.runner.invoke(
             profile,
             ["show", "dev"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -115,14 +119,14 @@ class TestProfileShowCommand:
     @patch("portmux.commands.profile.profile_exists")
     @patch("portmux.commands.profile.list_available_profiles")
     def test_profile_show_not_found(self, mock_list_profiles, mock_exists, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={"dev": ProfileConfig()})
         mock_exists.return_value = False
         mock_list_profiles.return_value = ["dev", "prod"]
 
         result = self.runner.invoke(
             profile,
             ["show", "staging"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -133,14 +137,14 @@ class TestProfileShowCommand:
     @patch("portmux.commands.profile.profile_exists")
     @patch("portmux.commands.profile.list_available_profiles")
     def test_profile_show_no_profiles(self, mock_list_profiles, mock_exists, mock_load_config):
-        mock_load_config.return_value = {"profiles": {}}
+        mock_load_config.return_value = PortmuxConfig(profiles={})
         mock_exists.return_value = False
         mock_list_profiles.return_value = []
 
         result = self.runner.invoke(
             profile,
             ["show", "dev"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -151,7 +155,7 @@ class TestProfileShowCommand:
     @patch("portmux.commands.profile.profile_exists")
     @patch("portmux.commands.profile.get_profile_info")
     def test_profile_show_inherits_config(self, mock_get_info, mock_exists, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={"dev": ProfileConfig()})
         mock_exists.return_value = True
         mock_get_info.return_value = {
             "name": "dev",
@@ -166,7 +170,7 @@ class TestProfileShowCommand:
         result = self.runner.invoke(
             profile,
             ["show", "dev"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -180,7 +184,7 @@ class TestProfileShowCommand:
         result = self.runner.invoke(
             profile,
             ["show", "dev"],
-            obj={"config": None, "verbose": False}
+            obj={"config": None, "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 1
@@ -193,13 +197,13 @@ class TestProfileActiveCommand:
     @patch("portmux.commands.profile.load_config")
     @patch("portmux.commands.profile.get_active_profile")
     def test_profile_active_with_profile(self, mock_get_active, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={"dev": ProfileConfig()})
         mock_get_active.return_value = "dev"
 
         result = self.runner.invoke(
             profile,
             ["active"],
-            obj={"config": None, "session": "portmux-dev", "verbose": False}
+            obj={"config": None, "session": "portmux-dev", "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -209,14 +213,16 @@ class TestProfileActiveCommand:
     @patch("portmux.commands.profile.get_active_profile")
     @patch("portmux.commands.profile.list_available_profiles")
     def test_profile_active_no_profile(self, mock_list_profiles, mock_get_active, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}, "prod": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={
+            "dev": ProfileConfig(), "prod": ProfileConfig()
+        })
         mock_get_active.return_value = None
         mock_list_profiles.return_value = ["dev", "prod"]
 
         result = self.runner.invoke(
             profile,
             ["active"],
-            obj={"config": None, "session": "portmux", "verbose": False}
+            obj={"config": None, "session": "portmux", "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -227,13 +233,13 @@ class TestProfileActiveCommand:
     @patch("portmux.commands.profile.load_config")
     @patch("portmux.commands.profile.get_active_profile")
     def test_profile_active_verbose_with_profile(self, mock_get_active, mock_load_config):
-        mock_load_config.return_value = {"profiles": {"dev": {}}}
+        mock_load_config.return_value = PortmuxConfig(profiles={"dev": ProfileConfig()})
         mock_get_active.return_value = "dev"
 
         result = self.runner.invoke(
             profile,
             ["active"],
-            obj={"config": None, "session": "portmux-dev", "verbose": True}
+            obj={"config": None, "session": "portmux-dev", "verbose": True, "output": Output()}
         )
 
         assert result.exit_code == 0
@@ -246,7 +252,7 @@ class TestProfileActiveCommand:
         result = self.runner.invoke(
             profile,
             ["active"],
-            obj={"config": None, "session": "portmux", "verbose": False}
+            obj={"config": None, "session": "portmux", "verbose": False, "output": Output()}
         )
 
         assert result.exit_code == 1

@@ -1,20 +1,23 @@
 """SSH port forwarding functions for PortMUX."""
 
+from __future__ import annotations
+
 import re
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from .exceptions import SSHError, TmuxError
+from .models import ForwardInfo, ParsedSpec
 from .windows import create_window, kill_window, list_windows, window_exists
 
 
-def parse_port_spec(spec: str) -> Dict[str, str]:
+def parse_port_spec(spec: str) -> ParsedSpec:
     """Validate and parse port specifications.
 
     Args:
         spec: Port specification like "8080:localhost:80" or "9000:192.168.1.10:443"
 
     Returns:
-        Dict with parsed components: local_port, remote_host, remote_port
+        ParsedSpec with parsed components
 
     Raises:
         SSHError: If port specification is invalid
@@ -28,21 +31,21 @@ def parse_port_spec(spec: str) -> Dict[str, str]:
             f"Invalid port specification '{spec}'. Expected format: 'local_port:remote_host:remote_port'"
         )
 
-    local_port, remote_host, remote_port = match.groups()
+    local_port_str, remote_host, remote_port_str = match.groups()
 
     # Validate port ranges
-    for port_name, port_str in [("local", local_port), ("remote", remote_port)]:
+    for port_name, port_str in [("local", local_port_str), ("remote", remote_port_str)]:
         port_num = int(port_str)
         if not (1 <= port_num <= 65535):
             raise SSHError(
                 f"Invalid {port_name} port {port_num}. Must be between 1 and 65535"
             )
 
-    return {
-        "local_port": local_port,
-        "remote_host": remote_host,
-        "remote_port": remote_port,
-    }
+    return ParsedSpec(
+        local_port=int(local_port_str),
+        remote_host=remote_host,
+        remote_port=int(remote_port_str),
+    )
 
 
 def add_forward(
@@ -86,20 +89,12 @@ def add_forward(
     # Build SSH command
     ssh_args = ["ssh", "-N"]
 
+    port_spec_str = f"{parsed_spec.local_port}:{parsed_spec.remote_host}:{parsed_spec.remote_port}"
+
     if direction == "L":
-        ssh_args.extend(
-            [
-                "-L",
-                f"{parsed_spec['local_port']}:{parsed_spec['remote_host']}:{parsed_spec['remote_port']}",
-            ]
-        )
+        ssh_args.extend(["-L", port_spec_str])
     else:  # direction == "R"
-        ssh_args.extend(
-            [
-                "-R",
-                f"{parsed_spec['local_port']}:{parsed_spec['remote_host']}:{parsed_spec['remote_port']}",
-            ]
-        )
+        ssh_args.extend(["-R", port_spec_str])
 
     if identity:
         ssh_args.extend(["-i", identity])
@@ -129,14 +124,14 @@ def remove_forward(name: str, session_name: str = "portmux") -> bool:
     return kill_window(name, session_name)
 
 
-def list_forwards(session_name: str = "portmux") -> List[Dict[str, str]]:
+def list_forwards(session_name: str = "portmux") -> List[ForwardInfo]:
     """List all active SSH forwards.
 
     Args:
         session_name: Name of the tmux session
 
     Returns:
-        List of dicts with forward details: name, direction, spec, status, command
+        List of ForwardInfo objects
 
     Raises:
         TmuxError: If tmux operations fail
@@ -153,13 +148,13 @@ def list_forwards(session_name: str = "portmux") -> List[Dict[str, str]]:
             spec = name[2:]  # Skip "L:" or "R:"
 
             forwards.append(
-                {
-                    "name": name,
-                    "direction": direction,
-                    "spec": spec,
-                    "status": window["status"],
-                    "command": window["command"],
-                }
+                ForwardInfo(
+                    name=name,
+                    direction=direction,
+                    spec=spec,
+                    status=window["status"],
+                    command=window["command"],
+                )
             )
 
     return forwards
@@ -184,7 +179,7 @@ def refresh_forward(name: str, session_name: str = "portmux") -> bool:
     current_forward = None
 
     for forward in forwards:
-        if forward["name"] == name:
+        if forward.name == name:
             current_forward = forward
             break
 
@@ -192,7 +187,7 @@ def refresh_forward(name: str, session_name: str = "portmux") -> bool:
         raise SSHError(f"Forward '{name}' not found")
 
     # Parse the current command to extract parameters
-    command_parts = current_forward["command"].split()
+    command_parts = current_forward.command.split()
     if len(command_parts) < 2 or command_parts[0] != "ssh":
         raise SSHError(f"Cannot parse SSH command for forward '{name}'")
 
@@ -210,8 +205,8 @@ def refresh_forward(name: str, session_name: str = "portmux") -> bool:
     remove_forward(name, session_name)
 
     # Recreate it
-    direction = current_forward["direction"]
-    spec = current_forward["spec"]
+    direction = current_forward.direction
+    spec = current_forward.spec
 
     try:
         add_forward(direction, spec, host, identity, session_name)

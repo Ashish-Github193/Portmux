@@ -1,33 +1,14 @@
 """Refresh command for PortMUX CLI."""
 
-import time
+from __future__ import annotations
 
 import click
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..config import load_config
-from ..forwards import list_forwards, refresh_forward
-from ..session import session_exists
-from ..startup import execute_startup_commands, startup_commands_enabled
+from ..forwards import refresh_forward
+from ..output import Output
+from ..service import PortmuxService
 from ..utils import handle_error
-
-console = Console()
-
-
-def _handle_startup_reload(config: dict, session_name: str, verbose: bool) -> None:
-    """Handle startup command reload after refresh."""
-    if startup_commands_enabled(config):
-        if verbose:
-            console.print("[blue]Re-executing startup commands...[/blue]")
-        
-        startup_success = execute_startup_commands(config, session_name, verbose)
-        if startup_success:
-            console.print("[green]Startup commands executed successfully[/green]")
-        else:
-            console.print("[yellow]Some startup commands failed[/yellow]")
-    elif verbose:
-        console.print("[blue]No startup commands configured for reload[/blue]")
 
 
 @click.command()
@@ -56,102 +37,54 @@ def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float, relo
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
+    output: Output = ctx.obj.get("output") or Output()
 
     try:
         # Validate arguments early
         if not refresh_all and not name:
             raise click.UsageError("Must specify forward name or use --all flag")
 
-        # Check if session exists
-        if not session_exists(session_name):
-            console.print(f"[red]Session '{session_name}' is not active[/red]")
-            console.print("[blue]Run 'portmux init' to create the session[/blue]")
-            return
-
-        # Load config for default delay
         config = load_config(ctx.obj.get("config"))
-        if delay is None:
-            delay = config.get("reconnect_delay", 1)
+        svc = PortmuxService(config, output, session_name)
 
-        # Get current forwards
-        forwards = list_forwards(session_name)
+        # Check if session exists
+        if not svc.session_is_active():
+            output.error(f"Session '{session_name}' is not active")
+            output.info("Run 'portmux init' to create the session")
+            return
 
         # Handle refresh all
         if refresh_all:
-            if not forwards:
-                console.print(
-                    f"[yellow]No forwards to refresh in session '{session_name}'[/yellow]"
-                )
-                return
-
-            console.print(
-                f"[blue]Refreshing all {len(forwards)} forward(s) with {delay}s delay...[/blue]"
+            svc.refresh_all(
+                delay=delay,
+                reload_startup=reload_startup,
+                verbose=verbose,
             )
-
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-                transient=True,
-            ) as progress:
-
-                refreshed_count = 0
-                for i, forward in enumerate(forwards):
-                    task = progress.add_task(
-                        f"Refreshing {forward['name']} ({i+1}/{len(forwards)})",
-                        total=None,
-                    )
-
-                    try:
-                        refresh_forward(forward["name"], session_name)
-                        refreshed_count += 1
-                        if verbose:
-                            console.print(
-                                f"[green]Refreshed forward '{forward['name']}'[/green]"
-                            )
-
-                        # Add delay between refreshes (except for last one)
-                        if i < len(forwards) - 1 and delay > 0:
-                            time.sleep(delay)
-
-                    except Exception as e:
-                        console.print(
-                            f"[red]Failed to refresh '{forward['name']}': {e}[/red]"
-                        )
-
-                    progress.remove_task(task)
-
-            console.print(
-                f"[green]Successfully refreshed {refreshed_count}/{len(forwards)} forward(s)[/green]"
-            )
-            
-            # Handle startup reload for refresh all
-            if reload_startup:
-                _handle_startup_reload(config, session_name, verbose)
-            
             return
 
         # Handle single forward refresh
-        # Check if forward exists
-        forward_exists = any(f["name"] == name for f in forwards)
+        forwards = svc.list_forwards()
+        forward_exists = any(f.name == name for f in forwards)
         if not forward_exists:
-            console.print(f"[red]Forward '{name}' not found[/red]")
-            console.print("[blue]Use 'portmux list' to see active forwards[/blue]")
+            output.error(f"Forward '{name}' not found")
+            output.info("Use 'portmux list' to see active forwards")
             return
 
-        # Refresh the forward
-        if verbose or delay != config.get("reconnect_delay", 1):
-            console.print(
-                f"[blue]Refreshing forward '{name}' with {delay}s delay...[/blue]"
-            )
+        # Use config default delay if not specified
+        effective_delay = delay if delay is not None else config.reconnect_delay
+
+        if verbose or (delay is not None and delay != config.reconnect_delay):
+            output.info(f"Refreshing forward '{name}' with {effective_delay}s delay...")
 
         refresh_forward(name, session_name)
-        console.print(f"[green]Successfully refreshed forward '{name}'[/green]")
-        
+        output.success(f"Successfully refreshed forward '{name}'")
+
         # Handle startup reload for single forward
         if reload_startup:
-            _handle_startup_reload(config, session_name, verbose)
+            svc._handle_startup_reload(verbose)
 
+    except click.UsageError:
+        raise
     except Exception as e:
-        handle_error(e)
+        handle_error(e, output)
         raise click.ClickException(str(e))

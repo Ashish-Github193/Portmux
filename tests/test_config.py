@@ -8,6 +8,7 @@ import pytest
 from portmux.config import (DEFAULT_CONFIG, get_default_identity, load_config,
                             validate_config)
 from portmux.exceptions import ConfigError
+from portmux.models import PortmuxConfig, StartupConfig
 
 
 class TestValidateConfig:
@@ -56,10 +57,13 @@ class TestLoadConfigBasic:
 
         result = load_config()
 
-        expected = DEFAULT_CONFIG.copy()
-        expected["startup"] = {"auto_execute": True, "commands": []}
-        expected["profiles"] = {}
-        assert result == expected
+        assert isinstance(result, PortmuxConfig)
+        assert result.session_name == "portmux"
+        assert result.default_identity is None
+        assert result.reconnect_delay == 1
+        assert result.max_retries == 3
+        assert result.startup == StartupConfig(auto_execute=True, commands=[])
+        assert result.profiles == {}
 
     def test_load_config_success(self, mocker):
         config_content = 'session_name = "custom-session"'
@@ -78,11 +82,11 @@ class TestLoadConfigBasic:
         mocker.patch("builtins.open", mock_open_func)
         result = load_config()
 
-        expected = DEFAULT_CONFIG.copy()
-        expected["session_name"] = "custom-session"
-        expected["startup"] = {"auto_execute": True, "commands": []}
-        expected["profiles"] = {}
-        assert result == expected
+        assert isinstance(result, PortmuxConfig)
+        assert result.session_name == "custom-session"
+        assert result.default_identity is None
+        assert result.startup == StartupConfig(auto_execute=True, commands=[])
+        assert result.profiles == {}
 
 
 class TestGetDefaultIdentitySimple:
