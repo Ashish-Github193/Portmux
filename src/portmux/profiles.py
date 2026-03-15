@@ -1,26 +1,29 @@
 """Profile management system for PortMUX."""
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional
 
 from .config import get_profiles_config, DEFAULT_PROFILE_CONFIG
 from .exceptions import ConfigError
+from .models import PortmuxConfig, ProfileConfig, StartupConfig
 
 
-def load_profile(profile_name: str, config: Dict) -> Dict:
+def load_profile(profile_name: str, config: PortmuxConfig) -> PortmuxConfig:
     """Load a specific profile configuration.
 
     Args:
         profile_name: Name of the profile to load
-        config: Base configuration dict
+        config: Base PortmuxConfig
 
     Returns:
-        Merged profile configuration dict
+        New PortmuxConfig with profile overrides applied
 
     Raises:
         ConfigError: If profile doesn't exist or is invalid
     """
-    profiles = get_profiles_config(config)
-    
+    profiles = config.profiles
+
     if profile_name not in profiles:
         available_profiles = list_available_profiles(config)
         if available_profiles:
@@ -31,64 +34,70 @@ def load_profile(profile_name: str, config: Dict) -> Dict:
             raise ConfigError(f"Profile '{profile_name}' not found. No profiles are configured.")
 
     profile_config = profiles[profile_name]
-    
+
     # Start with base configuration
-    merged_config = config.copy()
-    
+    merged = PortmuxConfig(
+        session_name=config.session_name,
+        default_identity=config.default_identity,
+        reconnect_delay=config.reconnect_delay,
+        max_retries=config.max_retries,
+        startup=StartupConfig(
+            auto_execute=config.startup.auto_execute,
+            commands=list(config.startup.commands),
+        ),
+        profiles=config.profiles,
+    )
+
     # Apply profile-specific overrides
-    if "session_name" in profile_config and profile_config["session_name"]:
-        merged_config["session_name"] = profile_config["session_name"]
-    
-    if "default_identity" in profile_config and profile_config["default_identity"]:
-        merged_config["default_identity"] = profile_config["default_identity"]
-    
+    if profile_config.session_name:
+        merged.session_name = profile_config.session_name
+
+    if profile_config.default_identity:
+        merged.default_identity = profile_config.default_identity
+
     # Add profile-specific startup commands
-    profile_commands = profile_config.get("commands", [])
-    if profile_commands:
-        # Replace startup commands with profile commands
-        merged_config["startup"] = {
-            "auto_execute": True,
-            "commands": profile_commands,
-        }
-    
+    if profile_config.commands:
+        merged.startup = StartupConfig(
+            auto_execute=True,
+            commands=list(profile_config.commands),
+        )
+
     # Store the active profile name for reference
-    merged_config["_active_profile"] = profile_name
-    
-    return merged_config
+    merged.active_profile = profile_name
+
+    return merged
 
 
-def list_available_profiles(config: Dict) -> List[str]:
+def list_available_profiles(config: PortmuxConfig) -> List[str]:
     """Get list of available profile names.
 
     Args:
-        config: Configuration dict
+        config: PortmuxConfig
 
     Returns:
         List of profile names sorted alphabetically
     """
-    profiles = get_profiles_config(config)
-    return sorted(profiles.keys())
+    return sorted(config.profiles.keys())
 
 
-def profile_exists(config: Dict, profile_name: str) -> bool:
+def profile_exists(config: PortmuxConfig, profile_name: str) -> bool:
     """Check if a profile exists in configuration.
 
     Args:
-        config: Configuration dict
+        config: PortmuxConfig
         profile_name: Name of profile to check
 
     Returns:
         True if profile exists
     """
-    profiles = get_profiles_config(config)
-    return profile_name in profiles
+    return profile_name in config.profiles
 
 
-def get_profile_info(config: Dict, profile_name: str) -> Dict:
+def get_profile_info(config: PortmuxConfig, profile_name: str) -> Dict:
     """Get detailed information about a profile.
 
     Args:
-        config: Configuration dict
+        config: PortmuxConfig
         profile_name: Name of the profile
 
     Returns:
@@ -97,25 +106,22 @@ def get_profile_info(config: Dict, profile_name: str) -> Dict:
     Raises:
         ConfigError: If profile doesn't exist
     """
-    profiles = get_profiles_config(config)
-    
-    if profile_name not in profiles:
+    if profile_name not in config.profiles:
         raise ConfigError(f"Profile '{profile_name}' not found")
 
-    profile_config = profiles[profile_name]
-    base_config = config.copy()
-    
+    profile_config = config.profiles[profile_name]
+
     # Build profile information
     info = {
         "name": profile_name,
-        "session_name": profile_config.get("session_name") or base_config.get("session_name", "portmux"),
-        "default_identity": profile_config.get("default_identity") or base_config.get("default_identity"),
-        "commands": profile_config.get("commands", []),
-        "command_count": len(profile_config.get("commands", [])),
-        "inherits_session_name": "session_name" not in profile_config or not profile_config["session_name"],
-        "inherits_identity": "default_identity" not in profile_config or not profile_config["default_identity"],
+        "session_name": profile_config.session_name or config.session_name,
+        "default_identity": profile_config.default_identity or config.default_identity,
+        "commands": profile_config.commands,
+        "command_count": len(profile_config.commands),
+        "inherits_session_name": not profile_config.session_name,
+        "inherits_identity": not profile_config.default_identity,
     }
-    
+
     return info
 
 
@@ -124,7 +130,7 @@ def validate_profile(profile_name: str, profile_config: Dict) -> bool:
 
     Args:
         profile_name: Name of the profile
-        profile_config: Profile configuration dict
+        profile_config: Profile configuration dict (raw from TOML)
 
     Returns:
         True if valid
@@ -169,16 +175,16 @@ def validate_profile(profile_name: str, profile_config: Dict) -> bool:
     return True
 
 
-def get_active_profile(config: Dict) -> Optional[str]:
+def get_active_profile(config: PortmuxConfig) -> Optional[str]:
     """Get the name of the currently active profile.
 
     Args:
-        config: Configuration dict (potentially loaded with a profile)
+        config: PortmuxConfig (potentially loaded with a profile)
 
     Returns:
         Profile name if active, None otherwise
     """
-    return config.get("_active_profile")
+    return config.active_profile
 
 
 def create_profile_template(
@@ -199,36 +205,34 @@ def create_profile_template(
         Profile configuration dict
     """
     profile_config = DEFAULT_PROFILE_CONFIG.copy()
-    
+
     if session_name:
         profile_config["session_name"] = session_name
-    
+
     if default_identity:
         profile_config["default_identity"] = default_identity
-    
+
     if commands:
         profile_config["commands"] = commands.copy()
-    
+
     return profile_config
 
 
-def profile_summary(config: Dict) -> Dict:
+def profile_summary(config: PortmuxConfig) -> Dict:
     """Get a summary of all profiles in configuration.
 
     Args:
-        config: Configuration dict
+        config: PortmuxConfig
 
     Returns:
         Dict with profile summary information
     """
-    profiles = get_profiles_config(config)
-    
     summary = {
-        "total_profiles": len(profiles),
+        "total_profiles": len(config.profiles),
         "profile_names": list_available_profiles(config),
         "profiles": {},
     }
-    
+
     for profile_name in summary["profile_names"]:
         try:
             info = get_profile_info(config, profile_name)
@@ -242,31 +246,44 @@ def profile_summary(config: Dict) -> Dict:
             summary["profiles"][profile_name] = {
                 "error": "Invalid profile configuration"
             }
-    
+
     return summary
 
 
-def merge_profile_with_base(base_config: Dict, profile_config: Dict) -> Dict:
+def merge_profile_with_base(base_config: PortmuxConfig, profile_config: ProfileConfig) -> PortmuxConfig:
     """Merge profile configuration with base configuration.
 
     Args:
-        base_config: Base configuration dict
-        profile_config: Profile-specific configuration dict
+        base_config: Base PortmuxConfig
+        profile_config: Profile-specific configuration
 
     Returns:
-        Merged configuration dict
+        New PortmuxConfig with profile overrides
     """
-    merged = base_config.copy()
-    
+    merged = PortmuxConfig(
+        session_name=base_config.session_name,
+        default_identity=base_config.default_identity,
+        reconnect_delay=base_config.reconnect_delay,
+        max_retries=base_config.max_retries,
+        startup=StartupConfig(
+            auto_execute=base_config.startup.auto_execute,
+            commands=list(base_config.startup.commands),
+        ),
+        profiles=base_config.profiles,
+    )
+
     # Override base config with profile-specific values
-    for key in ["session_name", "default_identity"]:
-        if key in profile_config and profile_config[key] is not None:
-            merged[key] = profile_config[key]
-    
+    if profile_config.session_name is not None:
+        merged.session_name = profile_config.session_name
+
+    if profile_config.default_identity is not None:
+        merged.default_identity = profile_config.default_identity
+
     # Handle commands specially - replace startup commands
-    if "commands" in profile_config and profile_config["commands"]:
-        merged["startup"] = merged.get("startup", {}).copy()
-        merged["startup"]["commands"] = profile_config["commands"].copy()
-        merged["startup"]["auto_execute"] = True
-    
+    if profile_config.commands:
+        merged.startup = StartupConfig(
+            auto_execute=True,
+            commands=list(profile_config.commands),
+        )
+
     return merged

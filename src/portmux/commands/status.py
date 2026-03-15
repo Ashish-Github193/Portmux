@@ -1,14 +1,13 @@
 """Status command for PortMUX CLI."""
 
+from __future__ import annotations
+
 import click
-from rich.console import Console
-from rich.panel import Panel
 
-from ..forwards import list_forwards
-from ..session import session_exists
+from ..config import load_config
+from ..output import Output
+from ..service import PortmuxService
 from ..utils import create_forwards_table, handle_error
-
-console = Console()
 
 
 @click.command()
@@ -25,26 +24,25 @@ def status(ctx: click.Context, check_connections: bool):
     """
     session_name = ctx.obj["session"]
     ctx.obj["verbose"]
+    output: Output = ctx.obj.get("output") or Output()
 
     try:
-        # Check session status
-        session_active = session_exists(session_name)
+        config = load_config(ctx.obj.get("config"))
+        svc = PortmuxService(config, output, session_name)
 
-        if not session_active:
-            console.print(
-                Panel(
-                    f"[red]Session '{session_name}' is not active[/red]\n"
-                    f"[blue]Run 'portmux init' to create the session[/blue]",
-                    title="PortMUX Status",
-                    border_style="red",
-                )
+        status_info = svc.get_status()
+
+        if not status_info["session_active"]:
+            output.panel(
+                f"[red]Session '{session_name}' is not active[/red]\n"
+                f"[blue]Run 'portmux init' to create the session[/blue]",
+                title="PortMUX Status",
+                border_style="red",
             )
             return
 
-        # Get forwards
-        forwards = list_forwards(session_name)
-
         # Display session info
+        forwards = status_info["forwards"]
         session_info = f"[green]Session '{session_name}' is active[/green]"
 
         if forwards:
@@ -52,22 +50,22 @@ def status(ctx: click.Context, check_connections: bool):
         else:
             session_info += f"\n[yellow]No active forwards[/yellow]"
 
-        console.print(Panel(session_info, title="PortMUX Status", border_style="green"))
+        output.panel(session_info, title="PortMUX Status", border_style="green")
 
         # Display forwards table if any exist
         if forwards:
-            console.print("\n[bold]Active Forwards:[/bold]")
+            output.print("\n[bold]Active Forwards:[/bold]")
             table = create_forwards_table(forwards, include_status=True)
-            console.print(table)
+            output.table(table)
 
             if check_connections:
-                console.print(
+                output.print(
                     "\n[yellow]Connection checking not implemented yet[/yellow]"
                 )
         else:
-            console.print("\n[yellow]No forwards to display[/yellow]")
-            console.print("[blue]Use 'portmux add' to create new forwards[/blue]")
+            output.print("\n[yellow]No forwards to display[/yellow]")
+            output.info("Use 'portmux add' to create new forwards")
 
     except Exception as e:
-        handle_error(e)
+        handle_error(e, output)
         raise click.ClickException(str(e))

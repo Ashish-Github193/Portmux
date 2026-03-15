@@ -1,18 +1,17 @@
 """Main CLI interface for PortMUX."""
 
+from __future__ import annotations
+
 from typing import Optional
 
 import click
 import colorama
-from rich.console import Console
 
 from . import __version__
+from .output import Output
 
 # Initialize colorama for cross-platform colored output
 colorama.init()
-
-# Rich console for better output formatting
-console = Console()
 
 
 @click.group()
@@ -31,10 +30,14 @@ def main(ctx: click.Context, verbose: bool, session: str, config: Optional[str])
     # Ensure context object exists
     ctx.ensure_object(dict)
 
+    # Create shared output channel
+    output = Output()
+
     # Store global options in context
     ctx.obj["verbose"] = verbose
     ctx.obj["session"] = session
     ctx.obj["config"] = config
+    ctx.obj["output"] = output
 
 
 # Import and register command modules

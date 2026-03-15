@@ -1,13 +1,13 @@
 """Remove command for PortMUX CLI."""
 
+from __future__ import annotations
+
 import click
-from rich.console import Console
 
-from ..forwards import list_forwards, remove_forward
-from ..session import kill_session, session_exists
+from ..config import load_config
+from ..output import Output
+from ..service import PortmuxService
 from ..utils import confirm_destructive_action, handle_error
-
-console = Console()
 
 
 @click.command()
@@ -35,16 +35,20 @@ def remove(
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
+    output: Output = ctx.obj.get("output") or Output()
 
     try:
         # Validate arguments early
         if not remove_all and not destroy_session and not name:
             raise click.UsageError("Must specify forward name or use --all flag")
 
+        config = load_config(ctx.obj.get("config"))
+        svc = PortmuxService(config, output, session_name)
+
         # Check if session exists
-        if not session_exists(session_name):
-            console.print(f"[red]Session '{session_name}' is not active[/red]")
-            console.print("[blue]Nothing to remove[/blue]")
+        if not svc.session_is_active():
+            output.error(f"Session '{session_name}' is not active")
+            output.info("Nothing to remove")
             return
 
         # Handle session destruction
@@ -53,68 +57,40 @@ def remove(
                 f"This will destroy session '{session_name}' and ALL forwards. Continue?",
                 force,
             ):
-                if verbose:
-                    console.print(
-                        f"[blue]Destroying session '{session_name}'...[/blue]"
-                    )
-                kill_session(session_name)
-                console.print(
-                    f"[green]Session '{session_name}' destroyed successfully[/green]"
-                )
+                svc.destroy_session(verbose)
             else:
-                console.print("[yellow]Operation cancelled[/yellow]")
+                output.warning("Operation cancelled")
             return
-
-        # Get current forwards
-        forwards = list_forwards(session_name)
 
         # Handle remove all
         if remove_all:
+            forwards = svc.list_forwards()
             if not forwards:
-                console.print(
-                    f"[yellow]No forwards to remove in session '{session_name}'[/yellow]"
+                output.warning(
+                    f"No forwards to remove in session '{session_name}'"
                 )
                 return
 
             if confirm_destructive_action(
                 f"This will remove ALL {len(forwards)} forward(s). Continue?", force
             ):
-                removed_count = 0
-                for forward in forwards:
-                    try:
-                        remove_forward(forward["name"], session_name)
-                        removed_count += 1
-                        if verbose:
-                            console.print(
-                                f"[green]Removed forward '{forward['name']}'[/green]"
-                            )
-                    except Exception as e:
-                        console.print(
-                            f"[red]Failed to remove '{forward['name']}': {e}[/red]"
-                        )
-
-                console.print(
-                    f"[green]Successfully removed {removed_count} forward(s)[/green]"
-                )
+                svc.remove_all_forwards(verbose)
             else:
-                console.print("[yellow]Operation cancelled[/yellow]")
+                output.warning("Operation cancelled")
             return
 
         # Handle single forward removal
-        # Check if forward exists
-        forward_exists = any(f["name"] == name for f in forwards)
+        forwards = svc.list_forwards()
+        forward_exists = any(f.name == name for f in forwards)
         if not forward_exists:
-            console.print(f"[red]Forward '{name}' not found[/red]")
-            console.print("[blue]Use 'portmux list' to see active forwards[/blue]")
+            output.error(f"Forward '{name}' not found")
+            output.info("Use 'portmux list' to see active forwards")
             return
 
-        # Remove the forward
-        if verbose:
-            console.print(f"[blue]Removing forward '{name}'...[/blue]")
+        svc.remove_forward(name, verbose)
 
-        remove_forward(name, session_name)
-        console.print(f"[green]Successfully removed forward '{name}'[/green]")
-
+    except click.UsageError:
+        raise
     except Exception as e:
-        handle_error(e)
+        handle_error(e, output)
         raise click.ClickException(str(e))

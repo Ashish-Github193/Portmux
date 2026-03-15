@@ -1,14 +1,13 @@
 """Add command for PortMUX CLI."""
 
+from __future__ import annotations
+
 import click
-from rich.console import Console
 
-from ..config import get_default_identity, load_config
-from ..forwards import add_forward
-from ..utils import (handle_error, init_session_if_needed, validate_direction,
-                     validate_port_spec)
-
-console = Console()
+from ..config import load_config
+from ..output import Output
+from ..service import PortmuxService
+from ..utils import handle_error, validate_direction, validate_port_spec
 
 
 @click.command()
@@ -48,45 +47,28 @@ def add(
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
+    output: Output = ctx.obj.get("output") or Output()
 
     try:
         # Load configuration for defaults
         config = load_config(ctx.obj.get("config"))
 
-        # Use provided identity or fall back to config default or system default
-        if not identity:
-            identity = config.get("default_identity") or get_default_identity()
-            if verbose and identity:
-                console.print(f"[blue]Using default identity: {identity}[/blue]")
+        # Create service and delegate
+        svc = PortmuxService(config, output, session_name)
 
-        # Initialize session if needed
-        init_session_if_needed(session_name)
-
-        # Create the forward
-        if verbose:
-            direction_name = "Local" if direction == "L" else "Remote"
-            console.print(
-                f"[blue]Creating {direction_name.lower()} forward {spec} to {host}...[/blue]"
-            )
-
-        window_name = add_forward(
+        svc.add_forward(
             direction=direction,
             spec=spec,
             host=host,
             identity=identity,
-            session_name=session_name,
-        )
-
-        direction_name = "Local" if direction == "L" else "Remote"
-        console.print(
-            f"[green]Successfully created {direction_name.lower()} forward '{window_name}'[/green]"
+            verbose=verbose,
         )
 
         if not no_check:
-            console.print(
-                "[yellow]Note: Connection validation not implemented yet[/yellow]"
+            output.warning(
+                "Note: Connection validation not implemented yet"
             )
 
     except Exception as e:
-        handle_error(e)
+        handle_error(e, output)
         raise click.ClickException(str(e))

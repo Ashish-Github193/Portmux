@@ -1,42 +1,46 @@
 """CLI utility functions for PortMUX."""
 
-from typing import Any, Dict, List
+from __future__ import annotations
+
+from typing import Any, List
 
 import click
-from rich.console import Console
 from rich.table import Table
 
 from .exceptions import ConfigError, PortMuxError, SSHError, TmuxError
+from .models import ForwardInfo
+from .output import Output
 from .session import create_session, session_exists
 
-console = Console()
 
-
-def handle_error(error: PortMuxError) -> None:
+def handle_error(error: PortMuxError, output: Output | None = None) -> None:
     """Handle and display PortMUX errors with appropriate formatting.
 
     Args:
         error: The PortMUX error to handle
+        output: Output channel (creates default if None)
     """
+    if output is None:
+        output = Output()
+
     if isinstance(error, TmuxError):
-        console.print(f"[red]Tmux Error:[/red] {error}")
+        output.error(f"Tmux Error: {error}")
         if "not installed" in str(error):
-            console.print(
-                "[yellow]Hint:[/yellow] Install tmux with your package manager"
-            )
+            output.warning("Hint: Install tmux with your package manager")
     elif isinstance(error, SSHError):
-        console.print(f"[red]SSH Error:[/red] {error}")
+        output.error(f"SSH Error: {error}")
     elif isinstance(error, ConfigError):
-        console.print(f"[red]Config Error:[/red] {error}")
+        output.error(f"Config Error: {error}")
     else:
-        console.print(f"[red]Error:[/red] {error}")
+        output.error(f"Error: {error}")
 
 
-def init_session_if_needed(session_name: str) -> bool:
+def init_session_if_needed(session_name: str, output: Output | None = None) -> bool:
     """Initialize session if it doesn't exist.
 
     Args:
         session_name: Name of the tmux session
+        output: Output channel (creates default if None)
 
     Returns:
         True if session was created or already exists
@@ -44,20 +48,23 @@ def init_session_if_needed(session_name: str) -> bool:
     Raises:
         TmuxError: If session creation fails
     """
+    if output is None:
+        output = Output()
+
     if not session_exists(session_name):
-        console.print(f"[yellow]Initializing session '{session_name}'...[/yellow]")
+        output.warning(f"Initializing session '{session_name}'...")
         create_session(session_name)
-        console.print(f"[green]Session '{session_name}' created successfully[/green]")
+        output.success(f"Session '{session_name}' created successfully")
     return True
 
 
 def create_forwards_table(
-    forwards: List[Dict[str, Any]], include_status: bool = True
+    forwards: List[ForwardInfo], include_status: bool = True
 ) -> Table:
     """Create a Rich table for displaying forwards.
 
     Args:
-        forwards: List of forward dictionaries
+        forwards: List of ForwardInfo objects
         include_status: Whether to include status column
 
     Returns:
@@ -73,9 +80,9 @@ def create_forwards_table(
         table.add_column("Status", style="yellow", width=10)
 
     for forward in forwards:
-        direction_display = "Local" if forward["direction"] == "L" else "Remote"
+        direction_display = "Local" if forward.direction == "L" else "Remote"
 
-        row = [forward["name"], direction_display, forward["spec"]]
+        row = [forward.name, direction_display, forward.spec]
 
         if include_status:
             # Simple status based on tmux window flags

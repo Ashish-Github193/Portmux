@@ -1,15 +1,15 @@
 """List command for PortMUX CLI."""
 
+from __future__ import annotations
+
 import json
 
 import click
-from rich.console import Console
 
-from ..forwards import list_forwards
-from ..session import session_exists
+from ..config import load_config
+from ..output import Output
+from ..service import PortmuxService
 from ..utils import create_forwards_table, handle_error
-
-console = Console()
 
 
 @click.command()
@@ -26,10 +26,14 @@ def list(ctx: click.Context, output_json: bool, include_status: bool):
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
+    output: Output = ctx.obj.get("output") or Output()
 
     try:
+        config = load_config(ctx.obj.get("config"))
+        svc = PortmuxService(config, output, session_name)
+
         # Check if session exists
-        if not session_exists(session_name):
+        if not svc.session_is_active():
             if output_json:
                 click.echo(
                     json.dumps(
@@ -37,35 +41,44 @@ def list(ctx: click.Context, output_json: bool, include_status: bool):
                     )
                 )
             else:
-                console.print(f"[red]Session '{session_name}' is not active[/red]")
-                console.print("[blue]Run 'portmux init' to create the session[/blue]")
+                output.error(f"Session '{session_name}' is not active")
+                output.info("Run 'portmux init' to create the session")
             return
 
         # Get forwards
-        forwards = list_forwards(session_name)
+        forwards = svc.list_forwards()
 
         if output_json:
-            # JSON output for scripting
-            output = {"session": session_name, "active": True, "forwards": forwards}
-            click.echo(json.dumps(output, indent=2))
+            # JSON output for scripting — convert ForwardInfo to dicts
+            forwards_data = [
+                {
+                    "name": f.name,
+                    "direction": f.direction,
+                    "spec": f.spec,
+                    "status": f.status,
+                    "command": f.command,
+                }
+                for f in forwards
+            ]
+            output_data = {"session": session_name, "active": True, "forwards": forwards_data}
+            click.echo(json.dumps(output_data, indent=2))
         else:
             # Human-readable table output
             if not forwards:
-                console.print(
-                    f"[yellow]No active forwards in session '{session_name}'[/yellow]"
+                output.warning(
+                    f"No active forwards in session '{session_name}'"
                 )
-                console.print("[blue]Use 'portmux add' to create new forwards[/blue]")
+                output.info("Use 'portmux add' to create new forwards")
             else:
-                if verbose:
-                    console.print(
-                        f"[blue]Active forwards in session '{session_name}':[/blue]\n"
-                    )
+                output.verbose(
+                    f"Active forwards in session '{session_name}':\n", verbose
+                )
 
                 table = create_forwards_table(forwards, include_status=include_status)
-                console.print(table)
+                output.table(table)
 
-                console.print(f"\n[green]{len(forwards)} forward(s) active[/green]")
+                output.success(f"\n{len(forwards)} forward(s) active")
 
     except Exception as e:
-        handle_error(e)
+        handle_error(e, output)
         raise click.ClickException(str(e))
