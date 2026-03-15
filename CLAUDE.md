@@ -263,6 +263,102 @@ def test_command(self):
 - **Phase 3** (done): Configuration system, profiles, startup automation
 - **Phase 4** (planned): TUI mode using Rich layouts — Output abstraction enables this
 
+## Missing Pieces & Known Gaps
+
+### 1. No Tunnel Health Verification (Critical)
+SSH forwards run in detached tmux windows. PortMUX has **zero visibility** into whether a
+tunnel is actually working. If the SSH key has a passphrase and isn't in the agent, SSH
+prompts for input inside the hidden tmux window — the tunnel silently never connects, but
+`portmux status` and `portmux list` both report it as "Running" because the tmux window
+exists and the `ssh` process is alive (just stuck on the prompt).
+
+**Affected code:**
+- `utils.py:88-89` — status is hardcoded to `"Running"` based solely on window existence
+- `ForwardInfo.status` — always `""` from tmux, never reflects actual tunnel health
+- No TCP probe, no SSH exit code check, no port-open validation anywhere
+
+### 2. Post-Add Connection Validation (Stub)
+`commands/add.py:67-70` — after creating a forward, the `--no-check` flag exists but
+the check itself is unimplemented. Every `portmux add` prints:
+```
+Note: Connection validation not implemented yet
+```
+The intended behavior: after creating the forward, TCP connect to `localhost:<local_port>`
+to verify the tunnel is actually passing traffic before reporting success.
+
+### 3. Status Connection Checking (Stub)
+`commands/status.py:14-17` — the `--check-connections` flag is declared but prints:
+```
+Connection checking not implemented yet
+```
+The intended behavior: for each active forward, probe the local port to confirm the
+tunnel is live, and report per-forward health (healthy/unhealthy/timeout).
+
+### 4. List Status Column (Fake)
+`commands/list.py:18` — the `--status` flag is accepted but does nothing meaningful.
+`utils.py:88-89` always shows "Running" for every forward regardless of actual state.
+There's no mechanism to distinguish between a healthy tunnel, a stuck SSH prompt, a
+crashed connection, or a port that's bound but not forwarding.
+
+### 5. `max_retries` Config Field (Unused)
+`PortmuxConfig.max_retries` (default: 3) is loaded from config, validated, and stored —
+but never read by any operation. `refresh_forward()` does a single kill+recreate with no
+retry loop. `service.refresh_all()` catches exceptions per-forward but doesn't retry.
+
+### 6. No Passphrase / SSH Agent Awareness
+`config.py:get_default_identity()` checks if key files exist on disk but doesn't verify
+they're usable (loaded in agent, passphrase-free, or agent-forwarded). A key with a
+passphrase that isn't in `ssh-agent` will cause a silent tunnel failure (see gap #1).
+There's no `ssh-add -l` check or `SSH_AUTH_SOCK` validation.
+
+### 7. No Forward Failure Detection or Auto-Restart
+When an SSH process inside a tmux window dies (network drop, server reboot, timeout),
+the tmux window closes silently. The forward disappears from `portmux list` with no
+notification. There's no watchdog, no monitoring loop, no event hook. The user must
+manually notice and run `portmux refresh`.
+
+### 8. No Tunnel Backend Abstraction
+`forwards.py` is hardcoded to tmux windows. There's no interface/protocol separating
+the "tunnel" concept from the "tmux window" implementation. Adding an alternative
+backend (direct subprocess, systemd, containers) requires rewriting `forwards.py`.
+This was identified as Pattern 4 in the isolation plan but deferred as future work.
+
+### 9. Startup Command Error Visibility
+`startup.py` executes commands via `subprocess.run()` with a 60s timeout. If a startup
+command fails, it's reported as a warning ("Some startup commands failed") but the
+actual stderr/stdout is not surfaced to the user. Debugging which command failed and
+why requires manually re-running the command.
+
+### 10. No Config File Watcher or Reload
+Changing `~/.portmux/config.toml` has no effect on a running session. There's no
+`portmux reload` command, no file watcher, and no way to apply config changes without
+destroying and re-initializing the session.
+
+### 11. No Session Persistence Across Reboots
+PortMUX relies on tmux sessions which don't survive system restarts. There's no
+systemd unit, no autostart mechanism, and no `portmux restore` command to recreate
+the previous session state from config.
+
+### 12. JSON Output Only on `list`
+Only `portmux list --json` supports machine-readable output. `portmux status`,
+`portmux profile list`, and `portmux profile show` have no `--json` flag. Scripting
+against these commands requires parsing Rich-formatted terminal output.
+
+### 13. No Dynamic Forward Support
+Only static local (`-L`) and remote (`-R`) forwards are supported. SSH dynamic
+forwards (`-D` for SOCKS proxy) and newer `-W` stdio forwarding are not handled.
+`validate_direction()` only accepts `L`/`R`.
+
+### 14. No Duplicate Forward Prevention Across Sessions
+`forwards.py:86` checks `window_exists()` within the current session, but if two
+profiles bind the same local port in different sessions, both will try to bind
+`localhost:8080` — the second SSH will fail silently inside its tmux window.
+
+### 15. `list --status` Flag Accepted But Ignored
+`commands/list.py:18-19` declares `--status` / `include_status` and passes it to
+`create_forwards_table()`, but the table always shows the status column with the
+hardcoded "Running" value. The flag changes nothing visible.
+
 ## Common Gotchas
 
 1. **Mock paths for service imports**: Use `portmux.service._add_forward` not `portmux.service.add_forward` — the underscore alias matters
