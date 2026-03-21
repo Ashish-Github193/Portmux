@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import click
 
-from ..config import load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import confirm_destructive_action, handle_error
 
 
@@ -54,7 +54,8 @@ def remove(
         # Handle session destruction
         if destroy_session:
             if confirm_destructive_action(
-                f"This will destroy session '{session_name}' and ALL forwards. Continue?",
+                f"This will destroy session '{session_name}'"
+                " and ALL forwards. Continue?",
                 force,
             ):
                 svc.destroy_session(verbose)
@@ -66,9 +67,7 @@ def remove(
         if remove_all:
             forwards = svc.list_forwards()
             if not forwards:
-                output.warning(
-                    f"No forwards to remove in session '{session_name}'"
-                )
+                output.warning(f"No forwards to remove in session '{session_name}'")
                 return
 
             if confirm_destructive_action(

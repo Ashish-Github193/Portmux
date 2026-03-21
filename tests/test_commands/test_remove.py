@@ -6,16 +6,16 @@ from click.testing import CliRunner
 
 from portmux.commands.remove import remove
 from portmux.models import ForwardInfo, PortmuxConfig
-from portmux.output import Output
+from portmux.core.output import Output
 
 
 class TestRemoveCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
-    @patch("portmux.service._remove_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
+    @patch("portmux.core.service._remove_forward")
     @patch("portmux.commands.remove.load_config")
     def test_remove_single_forward_success(
         self,
@@ -53,7 +53,7 @@ class TestRemoveCommand:
         mock_remove_forward.assert_called_once()
         assert mock_remove_forward.call_args.args == ("L:8080:localhost:80", "portmux")
 
-    @patch("portmux.session.session_exists")
+    @patch("portmux.tmux.session.session_exists")
     @patch("portmux.commands.remove.load_config")
     def test_remove_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -74,8 +74,8 @@ class TestRemoveCommand:
         assert "not active" in result.output
         assert "Nothing to remove" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.remove.load_config")
     def test_remove_forward_not_found(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -99,9 +99,9 @@ class TestRemoveCommand:
         assert "not found" in result.output
         assert "portmux list" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
-    @patch("portmux.service._remove_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
+    @patch("portmux.core.service._remove_forward")
     @patch("portmux.commands.remove.confirm_destructive_action")
     @patch("portmux.commands.remove.load_config")
     def test_remove_all_with_confirmation(
@@ -148,8 +148,8 @@ class TestRemoveCommand:
         assert "Successfully removed 2 forward(s)" in result.output
         assert mock_remove_forward.call_count == 2
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.session.kill_session")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.tmux.session.kill_session")
     @patch("portmux.commands.remove.confirm_destructive_action")
     @patch("portmux.commands.remove.load_config")
     def test_destroy_session_with_confirmation(

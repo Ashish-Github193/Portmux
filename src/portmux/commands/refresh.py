@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import click
 
-from ..config import load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import handle_error
 
 

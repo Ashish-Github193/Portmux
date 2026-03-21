@@ -6,16 +6,16 @@ from click.testing import CliRunner
 
 from portmux.commands.refresh import refresh
 from portmux.models import ForwardInfo, PortmuxConfig
-from portmux.output import Output
+from portmux.core.output import Output
 
 
 class TestRefreshCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
-    @patch("portmux.service._refresh_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
+    @patch("portmux.core.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_single_forward_success(
         self,
@@ -52,7 +52,7 @@ class TestRefreshCommand:
         assert "Successfully refreshed forward" in result.output
         mock_refresh_forward.assert_called_once()
 
-    @patch("portmux.session.session_exists")
+    @patch("portmux.tmux.session.session_exists")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -73,8 +73,8 @@ class TestRefreshCommand:
         assert "not active" in result.output
         assert "portmux init" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_forward_not_found(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -98,9 +98,9 @@ class TestRefreshCommand:
         assert "not found" in result.output
         assert "portmux list" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
-    @patch("portmux.service._refresh_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
+    @patch("portmux.core.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
     @patch("time.sleep")
     def test_refresh_all_forwards(
@@ -148,9 +148,9 @@ class TestRefreshCommand:
         # Should sleep between refreshes (but not after the last one)
         mock_sleep.assert_called_once_with(1)
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
-    @patch("portmux.service._refresh_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
+    @patch("portmux.core.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_with_custom_delay(
         self,

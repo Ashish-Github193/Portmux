@@ -5,8 +5,8 @@ from __future__ import annotations
 import shlex
 import subprocess
 
-from .exceptions import ConfigError, PortMuxError
-from .models import PortmuxConfig, StartupCommand
+from ..exceptions import ConfigError, PortMuxError
+from ..models import PortmuxConfig, StartupCommand
 from .output import Output
 
 

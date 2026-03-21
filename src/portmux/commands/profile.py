@@ -5,11 +5,15 @@ from __future__ import annotations
 import click
 from rich.table import Table
 
-from ..config import load_config
-from ..output import Output
-from ..profiles import (get_active_profile, get_profile_info,
-                       list_available_profiles, profile_exists,
-                       profile_summary)
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.profiles import (
+    get_active_profile,
+    get_profile_info,
+    list_available_profiles,
+    profile_exists,
+    profile_summary,
+)
 from ..utils import handle_error
 
 
@@ -50,7 +54,9 @@ def list(ctx: click.Context):
 
         if not profiles:
             output.warning("No profiles configured")
-            output.info("Profiles can be added to your config file at ~/.portmux/config.toml")
+            output.info(
+                "Profiles can be added to your config file at ~/.portmux/config.toml"
+            )
             return
 
         # Create table for profile list
@@ -70,25 +76,26 @@ def list(ctx: click.Context):
                     profile_name,
                     "[red]Error[/red]",
                     "[red]Error[/red]",
-                    "[red]Error[/red]"
+                    "[red]Error[/red]",
                 )
             else:
                 commands_count = str(profile_data.get("command_count", 0))
-                custom_identity = "Yes" if profile_data.get("has_custom_identity", False) else "No"
+                custom_identity = (
+                    "Yes" if profile_data.get("has_custom_identity", False) else "No"
+                )
                 session_name = profile_data.get("session_name", "portmux")
 
                 table.add_row(
-                    profile_name,
-                    session_name,
-                    commands_count,
-                    custom_identity
+                    profile_name, session_name, commands_count, custom_identity
                 )
 
         output.table(table)
 
         if verbose:
             output.info(f"\nTotal profiles: {len(profiles)}")
-            output.info(f"Configuration file: {config_path or '~/.portmux/config.toml'}")
+            output.info(
+                f"Configuration file: {config_path or '~/.portmux/config.toml'}"
+            )
 
     except Exception as e:
         handle_error(e, output)
@@ -148,7 +155,9 @@ def show(ctx: click.Context, profile_name: str):
             output.print("  [dim]No commands configured[/dim]")
 
         if verbose:
-            output.info(f"\nProfile inherits session name: {info['inherits_session_name']}")
+            output.info(
+                f"\nProfile inherits session name: {info['inherits_session_name']}"
+            )
             output.info(f"Profile inherits identity: {info['inherits_identity']}")
 
     except Exception as e:
@@ -187,7 +196,9 @@ def active(ctx: click.Context):
             available_profiles = list_available_profiles(config)
             if available_profiles:
                 output.info(f"Available profiles: {', '.join(available_profiles)}")
-                output.info("Use 'portmux init --profile <name>' to initialize with a profile")
+                output.info(
+                    "Use 'portmux init --profile <name>' to initialize with a profile"
+                )
 
     except Exception as e:
         handle_error(e, output)

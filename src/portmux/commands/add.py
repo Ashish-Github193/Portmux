@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import click
 
-from ..config import load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import handle_error, validate_direction, validate_port_spec
 
 
 @click.command()
 @click.argument(
     "direction",
-    callback=lambda ctx, param, value: validate_direction(value) if value else value,
+    callback=lambda ctx, _param, value: validate_direction(value) if value else value,
 )
 @click.argument(
     "spec",
-    callback=lambda ctx, param, value: validate_port_spec(value) if value else value,
+    callback=lambda ctx, _param, value: validate_port_spec(value) if value else value,
 )
 @click.argument("host")
 @click.option("--identity", "-i", type=click.Path(), help="SSH identity file path")
@@ -65,9 +65,7 @@ def add(
         )
 
         if not no_check:
-            output.warning(
-                "Note: Connection validation not implemented yet"
-            )
+            output.warning("Note: Connection validation not implemented yet")
 
     except Exception as e:
         handle_error(e, output)

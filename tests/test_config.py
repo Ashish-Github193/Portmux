@@ -5,8 +5,11 @@ from unittest.mock import MagicMock, mock_open
 
 import pytest
 
-from portmux.config import (DEFAULT_CONFIG, get_default_identity, load_config,
-                            validate_config)
+from portmux.core.config import (
+    get_default_identity,
+    load_config,
+    validate_config,
+)
 from portmux.exceptions import ConfigError
 from portmux.models import PortmuxConfig, StartupConfig
 
@@ -52,7 +55,7 @@ class TestValidateConfig:
 class TestLoadConfigBasic:
     def test_load_config_file_not_exists(self, mocker):
         # Mock the config path to return a non-existent file
-        mock_get_config_path = mocker.patch("portmux.config.get_config_path")
+        mock_get_config_path = mocker.patch("portmux.core.config.get_config_path")
         mock_get_config_path.return_value = Path("/nonexistent/config.toml")
 
         result = load_config()
@@ -69,7 +72,7 @@ class TestLoadConfigBasic:
         config_content = 'session_name = "custom-session"'
 
         # Mock file operations
-        mock_get_config_path = mocker.patch("portmux.config.get_config_path")
+        mock_get_config_path = mocker.patch("portmux.core.config.get_config_path")
         mock_config_file = MagicMock()
         mock_config_file.exists.return_value = True
         mock_get_config_path.return_value = mock_config_file

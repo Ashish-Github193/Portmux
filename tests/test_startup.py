@@ -6,10 +6,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from portmux.exceptions import ConfigError, PortMuxError
-from portmux.models import PortmuxConfig, StartupConfig, StartupCommand
-from portmux.startup import (execute_startup_command, execute_startup_commands,
-                            get_startup_command_preview, parse_startup_command,
-                            startup_commands_enabled, validate_startup_commands)
+from portmux.models import PortmuxConfig, StartupConfig
+from portmux.core.startup import (
+    execute_startup_command,
+    execute_startup_commands,
+    get_startup_command_preview,
+    parse_startup_command,
+    startup_commands_enabled,
+    validate_startup_commands,
+)
 
 
 class TestParseStartupCommand:
@@ -26,7 +31,14 @@ class TestParseStartupCommand:
         result = parse_startup_command(command)
 
         assert result.command == "portmux"
-        assert result.args == ["add", "L", "8080:localhost:80", "user@host", "-i", "~/.ssh/key"]
+        assert result.args == [
+            "add",
+            "L",
+            "8080:localhost:80",
+            "user@host",
+            "-i",
+            "~/.ssh/key",
+        ]
 
     def test_parse_non_portmux_command(self):
         command = "echo 'hello world'"
@@ -74,7 +86,7 @@ class TestValidateStartupCommands:
         commands = [
             "portmux add L 8080:localhost:80 user@host",
             "portmux remove L:8080:localhost:80",
-            "echo 'test command'"
+            "echo 'test command'",
         ]
         valid, errors = validate_startup_commands(commands)
 
@@ -85,7 +97,7 @@ class TestValidateStartupCommands:
         commands = [
             "portmux add L 8080:localhost:80 user@host",  # Valid
             "",  # Invalid - empty
-            "portmux invalid"  # Invalid - bad subcommand
+            "portmux invalid",  # Invalid - bad subcommand
         ]
         valid, errors = validate_startup_commands(commands)
 
@@ -98,7 +110,7 @@ class TestValidateStartupCommands:
         commands = [
             "portmux add L 8080:localhost:80 user@host",
             "ls -la",
-            "portmux status"
+            "portmux status",
         ]
         valid, errors = validate_startup_commands(commands)
 
@@ -107,14 +119,12 @@ class TestValidateStartupCommands:
 
 
 class TestExecuteStartupCommand:
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_portmux_command_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
 
         result = execute_startup_command(
-            "portmux add L 8080:localhost:80 user@host",
-            "test-session",
-            verbose=False
+            "portmux add L 8080:localhost:80 user@host", "test-session", verbose=False
         )
 
         assert result is True
@@ -125,14 +135,14 @@ class TestExecuteStartupCommand:
         assert "--session" in called_args
         assert "test-session" in called_args
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_portmux_command_with_existing_session_arg(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
 
         result = execute_startup_command(
             "portmux add L 8080:localhost:80 user@host --session existing",
             "test-session",
-            verbose=False
+            verbose=False,
         )
 
         assert result is True
@@ -142,14 +152,12 @@ class TestExecuteStartupCommand:
         session_count = called_args.count("--session")
         assert session_count == 1
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_non_portmux_command(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
 
         result = execute_startup_command(
-            "echo 'hello world'",
-            "test-session",
-            verbose=False
+            "echo 'hello world'", "test-session", verbose=False
         )
 
         assert result is True
@@ -158,43 +166,39 @@ class TestExecuteStartupCommand:
         called_args = mock_run.call_args[0][0]
         assert called_args == ["echo", "hello world"]
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_command_failure(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Error occurred")
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="Error occurred"
+        )
 
         result = execute_startup_command(
-            "portmux add L 8080:localhost:80 user@host",
-            "test-session",
-            verbose=False
+            "portmux add L 8080:localhost:80 user@host", "test-session", verbose=False
         )
 
         assert result is False
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_command_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=60)
 
         result = execute_startup_command(
-            "portmux add L 8080:localhost:80 user@host",
-            "test-session",
-            verbose=False
+            "portmux add L 8080:localhost:80 user@host", "test-session", verbose=False
         )
 
         assert result is False
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_command_subprocess_error(self, mock_run):
         mock_run.side_effect = subprocess.SubprocessError("Process failed")
 
         result = execute_startup_command(
-            "portmux add L 8080:localhost:80 user@host",
-            "test-session",
-            verbose=False
+            "portmux add L 8080:localhost:80 user@host", "test-session", verbose=False
         )
 
         assert result is False
 
-    @patch('portmux.startup.subprocess.run')
+    @patch("portmux.core.startup.subprocess.run")
     def test_execute_command_unexpected_error(self, mock_run):
         mock_run.side_effect = Exception("Unexpected error")
 
@@ -202,7 +206,7 @@ class TestExecuteStartupCommand:
             execute_startup_command(
                 "portmux add L 8080:localhost:80 user@host",
                 "test-session",
-                verbose=False
+                verbose=False,
             )
 
     def test_execute_invalid_command(self):
@@ -211,15 +215,15 @@ class TestExecuteStartupCommand:
 
 
 class TestExecuteStartupCommands:
-    @patch('portmux.startup.execute_startup_command')
+    @patch("portmux.core.startup.execute_startup_command")
     def test_execute_multiple_commands_success(self, mock_execute):
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=True,
                 commands=[
                     "portmux add L 8080:localhost:80 user@host",
-                    "portmux add R 9000:localhost:3000 user@host"
-                ]
+                    "portmux add R 9000:localhost:3000 user@host",
+                ],
             )
         )
         mock_execute.return_value = True
@@ -229,15 +233,15 @@ class TestExecuteStartupCommands:
         assert result is True
         assert mock_execute.call_count == 2
 
-    @patch('portmux.startup.execute_startup_command')
+    @patch("portmux.core.startup.execute_startup_command")
     def test_execute_commands_partial_failure(self, mock_execute):
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=True,
                 commands=[
                     "portmux add L 8080:localhost:80 user@host",
-                    "portmux add R 9000:localhost:3000 user@host"
-                ]
+                    "portmux add R 9000:localhost:3000 user@host",
+                ],
             )
         )
         mock_execute.side_effect = [True, False]  # First succeeds, second fails
@@ -251,7 +255,7 @@ class TestExecuteStartupCommands:
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=False,
-                commands=["portmux add L 8080:localhost:80 user@host"]
+                commands=["portmux add L 8080:localhost:80 user@host"],
             )
         )
 
@@ -260,9 +264,7 @@ class TestExecuteStartupCommands:
         assert result is True  # Returns True when disabled (no-op)
 
     def test_execute_commands_empty_list(self):
-        config = PortmuxConfig(
-            startup=StartupConfig(auto_execute=True, commands=[])
-        )
+        config = PortmuxConfig(startup=StartupConfig(auto_execute=True, commands=[]))
 
         result = execute_startup_commands(config, "test-session")
 
@@ -281,7 +283,7 @@ class TestStartupCommandsEnabled:
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=True,
-                commands=["portmux add L 8080:localhost:80 user@host"]
+                commands=["portmux add L 8080:localhost:80 user@host"],
             )
         )
 
@@ -291,16 +293,14 @@ class TestStartupCommandsEnabled:
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=False,
-                commands=["portmux add L 8080:localhost:80 user@host"]
+                commands=["portmux add L 8080:localhost:80 user@host"],
             )
         )
 
         assert startup_commands_enabled(config) is False
 
     def test_enabled_no_commands(self):
-        config = PortmuxConfig(
-            startup=StartupConfig(auto_execute=True, commands=[])
-        )
+        config = PortmuxConfig(startup=StartupConfig(auto_execute=True, commands=[]))
 
         assert startup_commands_enabled(config) is False
 
@@ -310,9 +310,7 @@ class TestStartupCommandsEnabled:
         assert startup_commands_enabled(config) is False
 
     def test_partial_startup_config(self):
-        config = PortmuxConfig(
-            startup=StartupConfig(auto_execute=True)
-        )
+        config = PortmuxConfig(startup=StartupConfig(auto_execute=True))
 
         assert startup_commands_enabled(config) is False
 
@@ -324,8 +322,8 @@ class TestGetStartupCommandPreview:
                 auto_execute=True,
                 commands=[
                     "portmux add L 8080:localhost:80 user@host",
-                    "portmux add R 9000:localhost:3000 user@host"
-                ]
+                    "portmux add R 9000:localhost:3000 user@host",
+                ],
             )
         )
 
@@ -339,7 +337,7 @@ class TestGetStartupCommandPreview:
         config = PortmuxConfig(
             startup=StartupConfig(
                 auto_execute=False,
-                commands=["portmux add L 8080:localhost:80 user@host"]
+                commands=["portmux add L 8080:localhost:80 user@host"],
             )
         )
 
@@ -348,9 +346,7 @@ class TestGetStartupCommandPreview:
         assert preview == []
 
     def test_get_preview_no_commands(self):
-        config = PortmuxConfig(
-            startup=StartupConfig(auto_execute=True, commands=[])
-        )
+        config = PortmuxConfig(startup=StartupConfig(auto_execute=True, commands=[]))
 
         preview = get_startup_command_preview(config)
 

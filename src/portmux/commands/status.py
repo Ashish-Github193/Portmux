@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import click
 
-from ..config import load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import create_forwards_table, handle_error
 
 
@@ -48,7 +48,7 @@ def status(ctx: click.Context, check_connections: bool):
         if forwards:
             session_info += f"\n[blue]{len(forwards)} active forward(s)[/blue]"
         else:
-            session_info += f"\n[yellow]No active forwards[/yellow]"
+            session_info += "\n[yellow]No active forwards[/yellow]"
 
         output.panel(session_info, title="PortMUX Status", border_style="green")
 

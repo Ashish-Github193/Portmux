@@ -6,9 +6,9 @@ import json
 
 import click
 
-from ..config import load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import create_forwards_table, handle_error
 
 
@@ -60,14 +60,16 @@ def list(ctx: click.Context, output_json: bool, include_status: bool):
                 }
                 for f in forwards
             ]
-            output_data = {"session": session_name, "active": True, "forwards": forwards_data}
+            output_data = {
+                "session": session_name,
+                "active": True,
+                "forwards": forwards_data,
+            }
             click.echo(json.dumps(output_data, indent=2))
         else:
             # Human-readable table output
             if not forwards:
-                output.warning(
-                    f"No active forwards in session '{session_name}'"
-                )
+                output.warning(f"No active forwards in session '{session_name}'")
                 output.info("Use 'portmux add' to create new forwards")
             else:
                 output.verbose(

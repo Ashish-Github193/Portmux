@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from .models import TunnelInfo
-from . import session as _session
-from . import windows as _windows
+from ..tmux import session as _session
+from ..tmux import windows as _windows
+from ..models import TunnelInfo
 
 
 class TmuxBackend:

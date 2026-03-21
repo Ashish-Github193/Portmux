@@ -7,7 +7,7 @@ from rich.table import Table
 
 from .exceptions import ConfigError, PortMuxError, SSHError, TmuxError
 from .models import ForwardInfo
-from .output import Output
+from .core.output import Output
 
 
 def handle_error(error: PortMuxError, output: Output | None = None) -> None:
@@ -106,7 +106,7 @@ def validate_port_spec(spec: str) -> str:
         click.BadParameter: If spec is invalid
     """
     # Import here to avoid circular imports
-    from .forwards import parse_port_spec
+    from .ssh.forwards import parse_port_spec
 
     try:
         parse_port_spec(spec)

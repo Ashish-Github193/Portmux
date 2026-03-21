@@ -1,9 +1,8 @@
 """Tmux window management functions for PortMUX."""
 
 import subprocess
-from typing import Dict, List
 
-from .exceptions import TmuxError
+from ..exceptions import TmuxError
 
 
 def create_window(name: str, command: str, session_name: str = "portmux") -> bool:
@@ -71,7 +70,7 @@ def kill_window(name: str, session_name: str = "portmux") -> bool:
         raise TmuxError("tmux is not installed or not found in PATH")
 
 
-def list_windows(session_name: str = "portmux") -> List[Dict[str, str]]:
+def list_windows(session_name: str = "portmux") -> list[dict[str, str]]:
     """Get all windows in session with their details.
 
     Args:

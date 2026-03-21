@@ -11,27 +11,35 @@ Current version: **1.2.0** | Python: **3.10+** | Build: **hatchling** | CLI: **C
 
 ## Architecture
 
-Three-layer design:
+Five-layer design, reflected in directory structure:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  PRESENTATION: cli.py, commands/*, output.py, utils.py      │
-│  Click commands, Rich output, argument validation           │
+│  PRESENTATION: cli.py, commands/*, utils.py                  │
+│  Click commands, Rich tables, argument validation            │
 ├─────────────────────────────────────────────────────────────┤
-│  BUSINESS LOGIC: service.py, config.py, profiles.py,        │
-│                  startup.py, models.py                       │
-│  Orchestration, configuration, profile merging, startup exec│
+│  SERVICE LAYER: core/service.py, core/config.py,             │
+│                 core/profiles.py, core/startup.py,           │
+│                 core/output.py                               │
+│  Orchestration, configuration, profile merging, output       │
 ├─────────────────────────────────────────────────────────────┤
-│  EXECUTION: session.py, windows.py, forwards.py             │
-│  Direct tmux subprocess calls, SSH command generation        │
+│  FORWARD LOGIC: ssh/forwards.py                              │
+│  SSH command building, port spec parsing, forward lifecycle  │
+├─────────────────────────────────────────────────────────────┤
+│  BACKEND ABSTRACTION: backend/protocol.py, backend/tmux.py   │
+│  TunnelBackend Protocol + TmuxBackend adapter                │
+├─────────────────────────────────────────────────────────────┤
+│  EXECUTION: tmux/session.py, tmux/windows.py                 │
+│  Direct tmux subprocess calls                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Key design patterns:
 - **Service Layer** — `PortmuxService` coordinates all high-level operations; commands are thin Click wrappers
+- **Backend Protocol** — `TunnelBackend` Protocol decouples tunnel lifecycle from tmux; `TmuxBackend` is the default implementation
 - **Data Models** — Dataclasses in `models.py` replace raw dicts for type safety
-- **Output Abstraction** — Single `Output` class replaces per-module `Console()` instances
-- **Dependency Injection** — Config and Output passed via Click context, not module globals
+- **Output Abstraction** — Single `Output` class (with `ProgressReporter`) replaces per-module `Console()` instances
+- **Dependency Injection** — Config, Output, and Backend passed via Click context / constructor, not module globals
 - **Custom Exceptions** — `PortMuxError` → `TmuxError`, `SSHError`, `ConfigError`
 
 ## Source Layout
@@ -41,25 +49,37 @@ src/portmux/
 ├── __init__.py          # Package version
 ├── __main__.py          # python -m portmux entry
 ├── cli.py               # Main Click group, global options (--verbose, --session, --config)
-├── models.py            # Dataclasses: ForwardInfo, ParsedSpec, StartupCommand, *Config
+├── models.py            # Dataclasses: ForwardInfo, TunnelInfo, ParsedSpec, StartupCommand, *Config
 ├── exceptions.py        # PortMuxError hierarchy
-├── output.py            # Centralized Output class (success/error/warning/info/verbose/table/panel)
-├── service.py           # PortmuxService — orchestrates all operations
-├── config.py            # TOML config load/save/validate, identity detection
-├── session.py           # create_session, session_exists, kill_session
-├── windows.py           # create_window, kill_window, list_windows, window_exists
-├── forwards.py          # add_forward, remove_forward, list_forwards, refresh_forward, parse_port_spec
-├── startup.py           # execute_startup_commands, parse/validate startup commands
-├── profiles.py          # load_profile, list/get/validate profiles, merge with base config
 ├── utils.py             # handle_error, validate_direction/port_spec, create_forwards_table
-└── commands/
-    ├── init.py          # portmux init [--force] [--profile NAME] [--no-startup]
-    ├── add.py           # portmux add DIRECTION SPEC HOST [-i IDENTITY] [--no-check]
-    ├── list.py          # portmux list [--json] [--status]
-    ├── remove.py        # portmux remove NAME | --all | --destroy-session [-f]
-    ├── refresh.py       # portmux refresh NAME | --all [--delay N] [--reload-startup]
-    ├── status.py        # portmux status [--check-connections]
-    └── profile.py       # portmux profile {list|show NAME|active}
+│
+├── commands/            # Presentation layer — thin Click wrappers
+│   ├── init.py          # portmux init [--force] [--profile NAME] [--no-startup]
+│   ├── add.py           # portmux add DIRECTION SPEC HOST [-i IDENTITY] [--no-check]
+│   ├── list.py          # portmux list [--json] [--status]
+│   ├── remove.py        # portmux remove NAME | --all | --destroy-session [-f]
+│   ├── refresh.py       # portmux refresh NAME | --all [--delay N] [--reload-startup]
+│   ├── status.py        # portmux status [--check-connections]
+│   └── profile.py       # portmux profile {list|show NAME|active}
+│
+├── core/                # Service layer — orchestration, config, output
+│   ├── service.py       # PortmuxService — orchestrates all operations
+│   ├── config.py        # TOML config load/save/validate, identity detection
+│   ├── profiles.py      # load_profile, list/get/validate profiles, merge with base config
+│   ├── startup.py       # execute_startup_commands, parse/validate startup commands
+│   └── output.py        # Output class (success/error/warning/info/verbose/table/panel) + ProgressReporter
+│
+├── backend/             # Backend abstraction — pluggable tunnel execution
+│   ├── __init__.py      # Re-exports TunnelBackend, TmuxBackend
+│   ├── protocol.py      # TunnelBackend Protocol (7 methods)
+│   └── tmux.py          # TmuxBackend — adapter wrapping tmux/session.py + tmux/windows.py
+│
+├── ssh/                 # Forward logic — SSH command building
+│   └── forwards.py      # add_forward, remove_forward, list_forwards, refresh_forward, parse_port_spec
+│
+└── tmux/                # Execution layer — raw tmux subprocess calls
+    ├── session.py       # create_session, session_exists, kill_session
+    └── windows.py       # create_window, kill_window, list_windows, window_exists
 ```
 
 ## Data Models (models.py)
@@ -70,6 +90,12 @@ class ParsedSpec:
     local_port: int          # 1-65535
     remote_host: str         # hostname or IP
     remote_port: int         # 1-65535
+
+@dataclass
+class TunnelInfo:
+    name: str                # backend-neutral tunnel identifier
+    status: str              # backend-specific status string
+    command: str             # command running inside the tunnel
 
 @dataclass
 class ForwardInfo:
@@ -138,21 +164,43 @@ commands = ["portmux add L 5432:prod-db:5432 user@bastion"]
 Profile values override base config; unset values inherit from `[general]`.
 Startup commands prefixed with `portmux` get `--session` auto-injected.
 
-## Service Layer (service.py)
+## Service Layer (core/service.py)
 
-`PortmuxService(config, output, session_name)` is the central orchestrator. Commands create
-an instance and delegate to it. Internal imports use underscore aliases to avoid name collisions:
+`PortmuxService(config, output, session_name, backend)` is the central orchestrator. Commands
+create an instance and delegate to it. The `backend` parameter defaults to `TmuxBackend()`.
+
+Internal imports use underscore aliases to avoid name collisions with method names:
 
 ```python
-from .forwards import add_forward as _add_forward      # mock as portmux.service._add_forward
-from .forwards import list_forwards as _list_forwards   # mock as portmux.service._list_forwards
-from .forwards import remove_forward as _remove_forward
-from .forwards import refresh_forward as _refresh_forward
+from ..ssh.forwards import add_forward as _add_forward      # mock as portmux.core.service._add_forward
+from ..ssh.forwards import list_forwards as _list_forwards   # mock as portmux.core.service._list_forwards
+from ..ssh.forwards import remove_forward as _remove_forward
+from ..ssh.forwards import refresh_forward as _refresh_forward
 ```
+
+Session operations go through `self.backend` (e.g., `self.backend.session_exists()`),
+not direct imports from `tmux/session.py`.
 
 Methods: `initialize()`, `add_forward()`, `remove_forward()`, `remove_all_forwards()`,
 `list_forwards()`, `refresh_forward()`, `refresh_all()`, `destroy_session()`,
-`get_status()`, `session_is_active()`
+`get_status()`, `session_is_active()`, `handle_startup_reload()`
+
+## Backend Protocol (backend/protocol.py)
+
+```python
+@runtime_checkable
+class TunnelBackend(Protocol):
+    def create_session(self, session_name: str) -> bool: ...
+    def session_exists(self, session_name: str) -> bool: ...
+    def kill_session(self, session_name: str) -> bool: ...
+    def create_tunnel(self, name: str, command: str, session_name: str) -> bool: ...
+    def kill_tunnel(self, name: str, session_name: str) -> bool: ...
+    def tunnel_exists(self, name: str, session_name: str) -> bool: ...
+    def list_tunnels(self, session_name: str) -> list[TunnelInfo]: ...
+```
+
+`TmuxBackend` (in `backend/tmux.py`) implements this by delegating to `tmux/session.py`
+and `tmux/windows.py`. Import via `from portmux.backend import TunnelBackend, TmuxBackend`.
 
 ## CLI Commands Quick Reference
 
@@ -188,7 +236,7 @@ SSH commands generated:
 
 ## Testing
 
-210 tests across 15 files. Run with:
+217 tests across 16 files. Run with:
 
 ```bash
 uv run pytest              # all tests
@@ -200,12 +248,21 @@ uv run pytest --cov=portmux  # with coverage
 
 All subprocess/tmux calls are mocked. No real tmux sessions needed for tests.
 
-**Module tests** use pytest-mock (`mocker.patch`):
+**Execution layer tests** mock `subprocess.run` directly:
 ```python
 def test_create_session(self, mocker):
-    mock_run = mocker.patch("portmux.session.subprocess.run")
+    mock_run = mocker.patch("subprocess.run")
     mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
     assert create_session("test") is True
+```
+
+**Forward tests** inject a mock backend directly (no patching needed):
+```python
+def test_add_forward(self):
+    backend = Mock(spec=TmuxBackend)
+    backend.tunnel_exists.return_value = False
+    backend.create_tunnel.return_value = True
+    result = add_forward("L", "8080:localhost:80", "user@host", backend=backend)
 ```
 
 **Command tests** use Click's `CliRunner`:
@@ -219,26 +276,29 @@ def test_command(self):
 ```
 
 **Mock path convention for service-delegated commands**: When a command delegates to
-`PortmuxService`, mock the underscore-prefixed imports in `portmux.service`:
-- `@patch("portmux.service._add_forward")` (not `portmux.service.add_forward`)
-- `@patch("portmux.service._list_forwards")`
-- `@patch("portmux.service._remove_forward")`
-- `@patch("portmux.service._refresh_forward")`
-- `@patch("portmux.service.session_exists")` (no underscore — imported directly)
-- `@patch("portmux.service.create_session")`
-- `@patch("portmux.service.kill_session")`
+`PortmuxService`, mock the underscore-prefixed imports in `portmux.core.service`:
+- `@patch("portmux.core.service._add_forward")` (not `portmux.core.service.add_forward`)
+- `@patch("portmux.core.service._list_forwards")`
+- `@patch("portmux.core.service._remove_forward")`
+- `@patch("portmux.core.service._refresh_forward")`
+
+Session mocks target `tmux/` modules (called through `TmuxBackend`):
+- `@patch("portmux.tmux.session.session_exists")`
+- `@patch("portmux.tmux.session.create_session")`
+- `@patch("portmux.tmux.session.kill_session")`
 
 ### Test File Map
 
 | File | Tests | Covers |
 |------|:-----:|--------|
-| test_session.py | 14 | session create/exists/kill |
-| test_windows.py | 21 | window create/kill/list/exists |
-| test_forwards.py | 30 | add/remove/list/refresh/parse |
-| test_config.py | 8 | load/save/validate config |
-| test_startup.py | 35 | startup command parse/validate/execute |
-| test_profiles.py | 41 | profile load/list/merge/validate |
-| test_utils.py | 11 | validation, tables, error handling |
+| test_session.py | 14 | tmux/session create/exists/kill |
+| test_windows.py | 21 | tmux/window create/kill/list/exists |
+| test_tmux_backend.py | 9 | TmuxBackend adapter delegation |
+| test_forwards.py | 30 | ssh/forwards add/remove/list/refresh/parse |
+| test_config.py | 8 | core/config load/save/validate |
+| test_startup.py | 35 | core/startup command parse/validate/execute |
+| test_profiles.py | 41 | core/profiles load/list/merge/validate |
+| test_utils.py | 9 | validation, tables, error handling |
 | test_cli.py | 2 | CLI entry point |
 | test_commands/*.py | 48 | all 7 command modules |
 
@@ -317,11 +377,10 @@ the tmux window closes silently. The forward disappears from `portmux list` with
 notification. There's no watchdog, no monitoring loop, no event hook. The user must
 manually notice and run `portmux refresh`.
 
-### 8. No Tunnel Backend Abstraction
-`forwards.py` is hardcoded to tmux windows. There's no interface/protocol separating
-the "tunnel" concept from the "tmux window" implementation. Adding an alternative
-backend (direct subprocess, systemd, containers) requires rewriting `forwards.py`.
-This was identified as Pattern 4 in the isolation plan but deferred as future work.
+### 8. ~~No Tunnel Backend Abstraction~~ (Resolved)
+`TunnelBackend` Protocol now abstracts tunnel lifecycle. `TmuxBackend` is the default
+implementation. `ssh/forwards.py` accepts an optional `backend` parameter. Adding a new
+backend (subprocess, systemd) means implementing 7 methods — no changes to forwards or service.
 
 ### 9. Startup Command Error Visibility
 `startup.py` executes commands via `subprocess.run()` with a 60s timeout. If a startup
@@ -361,11 +420,13 @@ hardcoded "Running" value. The flag changes nothing visible.
 
 ## Common Gotchas
 
-1. **Mock paths for service imports**: Use `portmux.service._add_forward` not `portmux.service.add_forward` — the underscore alias matters
-2. **Config returns dataclass**: `load_config()` returns `PortmuxConfig`, not a dict. Access with `.session_name` not `["session_name"]`
-3. **validate_config() takes raw dict**: It validates TOML dict structure before building `PortmuxConfig`
-4. **Startup command injection**: PortMUX startup commands get `--session` auto-injected if not present
-5. **Forward status field**: Always `""` currently — `status` column exists for future health checks
-6. **Click context obj**: Commands expect `{"session", "config", "verbose", "output"}` in `ctx.obj`
-7. **Profile inheritance**: `ProfileConfig` fields set to `None` inherit from base `PortmuxConfig`
-8. **Identity resolution order**: explicit `-i` flag → `config.default_identity` → auto-detected from `~/.ssh/`
+1. **Mock paths for service imports**: Use `portmux.core.service._add_forward` not `portmux.core.service.add_forward` — the underscore alias matters
+2. **Session mock paths go through tmux/**: Mock `portmux.tmux.session.session_exists`, not `portmux.core.service.session_exists` — service uses `self.backend` which delegates to `tmux/session.py`
+3. **Backend import**: Use `from portmux.backend import TunnelBackend, TmuxBackend` — the `backend/__init__.py` re-exports both
+4. **Config returns dataclass**: `load_config()` returns `PortmuxConfig`, not a dict. Access with `.session_name` not `["session_name"]`
+5. **validate_config() takes raw dict**: It validates TOML dict structure before building `PortmuxConfig`
+6. **Startup command injection**: PortMUX startup commands get `--session` auto-injected if not present
+7. **Forward status field**: Always `""` currently — `status` column exists for future health checks
+8. **Click context obj**: Commands expect `{"session", "config", "verbose", "output"}` in `ctx.obj`
+9. **Profile inheritance**: `ProfileConfig` fields set to `None` inherit from base `PortmuxConfig`
+10. **Identity resolution order**: explicit `-i` flag → `config.default_identity` → auto-detected from `~/.ssh/`

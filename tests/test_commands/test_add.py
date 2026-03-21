@@ -7,18 +7,18 @@ from click.testing import CliRunner
 from portmux.commands.add import add
 from portmux.exceptions import SSHError
 from portmux.models import PortmuxConfig
-from portmux.output import Output
+from portmux.core.output import Output
 
 
 class TestAddCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.session.create_session")
-    @patch("portmux.service._add_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.tmux.session.create_session")
+    @patch("portmux.core.service._add_forward")
     @patch("portmux.commands.add.load_config")
-    @patch("portmux.service.get_default_identity")
+    @patch("portmux.core.service.get_default_identity")
     def test_add_local_forward_success(
         self,
         mock_get_identity,
@@ -53,8 +53,8 @@ class TestAddCommand:
         assert call_kwargs["identity"] == "/home/user/.ssh/id_rsa"
         assert call_kwargs["session_name"] == "portmux"
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._add_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._add_forward")
     @patch("portmux.commands.add.load_config")
     def test_add_remote_forward_with_identity(
         self, mock_load_config, mock_add_forward, mock_session_exists
@@ -116,8 +116,8 @@ class TestAddCommand:
         assert result.exit_code != 0
         assert "Invalid port specification" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._add_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._add_forward")
     @patch("portmux.commands.add.load_config")
     def test_add_forward_already_exists(
         self, mock_load_config, mock_add_forward, mock_session_exists
@@ -142,10 +142,10 @@ class TestAddCommand:
         assert result.exit_code != 0
         assert "already exists" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._add_forward")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._add_forward")
     @patch("portmux.commands.add.load_config")
-    @patch("portmux.service.get_default_identity")
+    @patch("portmux.core.service.get_default_identity")
     def test_add_verbose_output(
         self, mock_get_identity, mock_load_config, mock_add_forward, mock_session_exists
     ):
