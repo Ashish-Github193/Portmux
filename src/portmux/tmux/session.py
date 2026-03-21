@@ -1,8 +1,26 @@
 """Tmux session management functions for PortMUX."""
 
-import subprocess
+from __future__ import annotations
+
+import libtmux
+from libtmux.exc import LibTmuxException, TmuxCommandNotFound, TmuxSessionExists
 
 from ..exceptions import TmuxError
+
+
+def _get_server() -> libtmux.Server:
+    """Get a libtmux Server instance.
+
+    Returns:
+        libtmux Server connected to the default socket
+
+    Raises:
+        TmuxError: If tmux is not installed
+    """
+    try:
+        return libtmux.Server()
+    except TmuxCommandNotFound:
+        raise TmuxError("tmux is not installed or not found in PATH")
 
 
 def create_session(session_name: str = "portmux") -> bool:
@@ -18,24 +36,15 @@ def create_session(session_name: str = "portmux") -> bool:
         TmuxError: If tmux command fails for reasons other than session existing
     """
     try:
-        result = subprocess.run(
-            ["tmux", "new-session", "-d", "-s", session_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode == 0:
-            return True
-        elif "duplicate session" in result.stderr:
-            return False
-        else:
-            raise TmuxError(
-                f"Failed to create session '{session_name}': {result.stderr}"
-            )
-
-    except FileNotFoundError:
+        server = _get_server()
+        server.new_session(session_name=session_name, attach=False)
+        return True
+    except TmuxSessionExists:
+        return False
+    except TmuxCommandNotFound:
         raise TmuxError("tmux is not installed or not found in PATH")
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to create session '{session_name}': {e}")
 
 
 def session_exists(session_name: str = "portmux") -> bool:
@@ -51,16 +60,12 @@ def session_exists(session_name: str = "portmux") -> bool:
         TmuxError: If tmux command fails
     """
     try:
-        result = subprocess.run(
-            ["tmux", "has-session", "-t", session_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return result.returncode == 0
-
-    except FileNotFoundError:
+        server = _get_server()
+        return server.has_session(session_name)
+    except TmuxCommandNotFound:
         raise TmuxError("tmux is not installed or not found in PATH")
+    except LibTmuxException:
+        return False
 
 
 def kill_session(session_name: str = "portmux") -> bool:
@@ -76,19 +81,13 @@ def kill_session(session_name: str = "portmux") -> bool:
         TmuxError: If tmux command fails
     """
     try:
-        result = subprocess.run(
-            ["tmux", "kill-session", "-t", session_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode == 0:
-            return True
-        elif "session not found" in result.stderr:
+        server = _get_server()
+        session = server.sessions.get(session_name=session_name, default=None)
+        if session is None:
             return True  # Already gone, consider success
-        else:
-            raise TmuxError(f"Failed to kill session '{session_name}': {result.stderr}")
-
-    except FileNotFoundError:
+        session.kill()
+        return True
+    except TmuxCommandNotFound:
         raise TmuxError("tmux is not installed or not found in PATH")
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to kill session '{session_name}': {e}")

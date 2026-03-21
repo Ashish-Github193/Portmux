@@ -1,8 +1,27 @@
 """Tmux window management functions for PortMUX."""
 
-import subprocess
+from __future__ import annotations
+
+import libtmux
+from libtmux.exc import LibTmuxException, TmuxCommandNotFound
 
 from ..exceptions import TmuxError
+
+
+def _get_session(session_name: str) -> libtmux.Session | None:
+    """Get a libtmux Session by name.
+
+    Returns:
+        Session object, or None if not found
+
+    Raises:
+        TmuxError: If tmux is not installed
+    """
+    try:
+        server = libtmux.Server()
+        return server.sessions.get(session_name=session_name, default=None)
+    except TmuxCommandNotFound:
+        raise TmuxError("tmux is not installed or not found in PATH")
 
 
 def create_window(name: str, command: str, session_name: str = "portmux") -> bool:
@@ -20,20 +39,17 @@ def create_window(name: str, command: str, session_name: str = "portmux") -> boo
         TmuxError: If tmux command fails
     """
     try:
-        result = subprocess.run(
-            ["tmux", "new-window", "-t", session_name, "-n", name, command],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode == 0:
-            return True
-        else:
-            raise TmuxError(f"Failed to create window '{name}': {result.stderr}")
-
-    except FileNotFoundError:
-        raise TmuxError("tmux is not installed or not found in PATH")
+        session = _get_session(session_name)
+        if session is None:
+            raise TmuxError(
+                f"Failed to create window '{name}': session '{session_name}' not found"
+            )
+        session.new_window(window_name=name, window_shell=command, attach=False)
+        return True
+    except TmuxError:
+        raise
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to create window '{name}': {e}")
 
 
 def kill_window(name: str, session_name: str = "portmux") -> bool:
@@ -50,24 +66,18 @@ def kill_window(name: str, session_name: str = "portmux") -> bool:
         TmuxError: If tmux command fails
     """
     try:
-        result = subprocess.run(
-            ["tmux", "kill-window", "-t", f"{session_name}:{name}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode == 0:
-            return True
-        elif (
-            "window not found" in result.stderr or "can't find window" in result.stderr
-        ):
+        session = _get_session(session_name)
+        if session is None:
+            return True  # Session gone, window is gone too
+        window = session.windows.get(window_name=name, default=None)
+        if window is None:
             return True  # Already gone, consider success
-        else:
-            raise TmuxError(f"Failed to kill window '{name}': {result.stderr}")
-
-    except FileNotFoundError:
-        raise TmuxError("tmux is not installed or not found in PATH")
+        window.kill()
+        return True
+    except TmuxError:
+        raise
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to kill window '{name}': {e}")
 
 
 def list_windows(session_name: str = "portmux") -> list[dict[str, str]]:
@@ -83,37 +93,24 @@ def list_windows(session_name: str = "portmux") -> list[dict[str, str]]:
         TmuxError: If tmux command fails
     """
     try:
-        result = subprocess.run(
-            [
-                "tmux",
-                "list-windows",
-                "-t",
-                session_name,
-                "-F",
-                "#{window_name}|#{window_flags}|#{pane_current_command}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode == 0:
-            windows = []
-            for line in result.stdout.strip().split("\n"):
-                if line:  # Skip empty lines
-                    parts = line.split("|", 2)
-                    if len(parts) >= 3:
-                        windows.append(
-                            {"name": parts[0], "status": parts[1], "command": parts[2]}
-                        )
-            return windows
-        elif "session not found" in result.stderr:
+        session = _get_session(session_name)
+        if session is None:
             return []  # Session doesn't exist, return empty list
-        else:
-            raise TmuxError(f"Failed to list windows: {result.stderr}")
-
-    except FileNotFoundError:
-        raise TmuxError("tmux is not installed or not found in PATH")
+        windows = []
+        for window in session.windows:
+            pane = window.active_pane
+            windows.append(
+                {
+                    "name": window.name,
+                    "status": window.window_raw_flags or "",
+                    "command": pane.pane_current_command if pane else "",
+                }
+            )
+        return windows
+    except TmuxError:
+        raise
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to list windows: {e}")
 
 
 def window_exists(name: str, session_name: str = "portmux") -> bool:
@@ -129,5 +126,7 @@ def window_exists(name: str, session_name: str = "portmux") -> bool:
     Raises:
         TmuxError: If tmux command fails
     """
-    windows = list_windows(session_name)
-    return any(window["name"] == name for window in windows)
+    session = _get_session(session_name)
+    if session is None:
+        return False
+    return session.windows.get(window_name=name, default=None) is not None
