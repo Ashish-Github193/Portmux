@@ -1,16 +1,23 @@
 """Tests for profile management system."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from portmux.config import DEFAULT_PROFILE_CONFIG
+from portmux.core.config import DEFAULT_PROFILE_CONFIG
 from portmux.exceptions import ConfigError
 from portmux.models import PortmuxConfig, ProfileConfig, StartupConfig
-from portmux.profiles import (create_profile_template, get_active_profile,
-                             get_profile_info, list_available_profiles,
-                             load_profile, merge_profile_with_base,
-                             profile_exists, profile_summary, validate_profile)
+from portmux.core.profiles import (
+    create_profile_template,
+    get_active_profile,
+    get_profile_info,
+    list_available_profiles,
+    load_profile,
+    merge_profile_with_base,
+    profile_exists,
+    profile_summary,
+    validate_profile,
+)
 
 
 def _config(**kwargs):
@@ -27,9 +34,9 @@ class TestLoadProfile:
             profiles={
                 "dev": ProfileConfig(
                     session_name="portmux-dev",
-                    commands=["portmux add L 3000:localhost:3000 user@dev"]
+                    commands=["portmux add L 3000:localhost:3000 user@dev"],
                 )
-            }
+            },
         )
 
         result = load_profile("dev", config)
@@ -49,7 +56,7 @@ class TestLoadProfile:
                     commands=["portmux add L 3000:localhost:3000 user@dev"]
                     # No session_name or default_identity - should inherit
                 )
-            }
+            },
         )
 
         result = load_profile("dev", config)
@@ -62,9 +69,7 @@ class TestLoadProfile:
         config = _config(
             session_name="portmux",
             startup=StartupConfig(auto_execute=True, commands=[]),
-            profiles={
-                "dev": ProfileConfig(commands=[])
-            }
+            profiles={"dev": ProfileConfig(commands=[])},
         )
 
         with pytest.raises(ConfigError, match="Profile 'prod' not found"):
@@ -76,8 +81,8 @@ class TestLoadProfile:
             startup=StartupConfig(auto_execute=True, commands=[]),
             profiles={
                 "dev": ProfileConfig(commands=[]),
-                "staging": ProfileConfig(commands=[])
-            }
+                "staging": ProfileConfig(commands=[]),
+            },
         )
 
         with pytest.raises(ConfigError, match="Available profiles: dev, staging"):
@@ -87,7 +92,7 @@ class TestLoadProfile:
         config = _config(
             session_name="portmux",
             startup=StartupConfig(auto_execute=True, commands=[]),
-            profiles={}
+            profiles={},
         )
 
         with pytest.raises(ConfigError, match="No profiles are configured"):
@@ -102,9 +107,9 @@ class TestLoadProfile:
                 "prod": ProfileConfig(
                     session_name="portmux-prod",
                     default_identity="~/.ssh/prod_key",
-                    commands=["portmux add L 5432:db:5432 user@prod"]
+                    commands=["portmux add L 5432:db:5432 user@prod"],
                 )
-            }
+            },
         )
 
         result = load_profile("prod", config)
@@ -116,11 +121,13 @@ class TestLoadProfile:
 
 class TestListAvailableProfiles:
     def test_list_profiles_multiple(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[]),
-            "staging": ProfileConfig(commands=[]),
-            "prod": ProfileConfig(commands=[])
-        })
+        config = _config(
+            profiles={
+                "dev": ProfileConfig(commands=[]),
+                "staging": ProfileConfig(commands=[]),
+                "prod": ProfileConfig(commands=[]),
+            }
+        )
 
         result = list_available_profiles(config)
 
@@ -141,9 +148,7 @@ class TestListAvailableProfiles:
         assert result == []
 
     def test_list_profiles_single(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[])
-        })
+        config = _config(profiles={"dev": ProfileConfig(commands=[])})
 
         result = list_available_profiles(config)
 
@@ -152,18 +157,18 @@ class TestListAvailableProfiles:
 
 class TestProfileExists:
     def test_profile_exists_true(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[]),
-            "prod": ProfileConfig(commands=[])
-        })
+        config = _config(
+            profiles={
+                "dev": ProfileConfig(commands=[]),
+                "prod": ProfileConfig(commands=[]),
+            }
+        )
 
         assert profile_exists(config, "dev") is True
         assert profile_exists(config, "prod") is True
 
     def test_profile_exists_false(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[])
-        })
+        config = _config(profiles={"dev": ProfileConfig(commands=[])})
 
         assert profile_exists(config, "prod") is False
 
@@ -189,10 +194,10 @@ class TestGetProfileInfo:
                     default_identity="~/.ssh/dev_key",
                     commands=[
                         "portmux add L 3000:localhost:3000 user@dev",
-                        "portmux add L 8080:localhost:8080 user@dev"
-                    ]
+                        "portmux add L 8080:localhost:8080 user@dev",
+                    ],
                 )
-            }
+            },
         )
 
         result = get_profile_info(config, "dev")
@@ -202,7 +207,7 @@ class TestGetProfileInfo:
         assert result["default_identity"] == "~/.ssh/dev_key"
         assert result["commands"] == [
             "portmux add L 3000:localhost:3000 user@dev",
-            "portmux add L 8080:localhost:8080 user@dev"
+            "portmux add L 8080:localhost:8080 user@dev",
         ]
         assert result["command_count"] == 2
         assert result["inherits_session_name"] is False
@@ -217,7 +222,7 @@ class TestGetProfileInfo:
                     commands=["portmux add L 3000:localhost:3000 user@dev"]
                     # Missing session_name and default_identity
                 )
-            }
+            },
         )
 
         result = get_profile_info(config, "dev")
@@ -230,9 +235,7 @@ class TestGetProfileInfo:
         assert result["inherits_identity"] is True
 
     def test_get_profile_info_not_found(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[])
-        })
+        config = _config(profiles={"dev": ProfileConfig(commands=[])})
 
         with pytest.raises(ConfigError, match="Profile 'prod' not found"):
             get_profile_info(config, "prod")
@@ -242,7 +245,7 @@ class TestGetProfileInfo:
             session_name="portmux",
             profiles={
                 "dev": ProfileConfig()  # No commands
-            }
+            },
         )
 
         result = get_profile_info(config, "dev")
@@ -252,16 +255,14 @@ class TestGetProfileInfo:
 
 
 class TestValidateProfile:
-    @patch('pathlib.Path.exists')
+    @patch("pathlib.Path.exists")
     def test_validate_profile_valid(self, mock_exists):
         mock_exists.return_value = True
 
         profile_config = {
             "session_name": "portmux-dev",
             "default_identity": "~/.ssh/dev_key",
-            "commands": [
-                "portmux add L 3000:localhost:3000 user@dev"
-            ]
+            "commands": ["portmux add L 3000:localhost:3000 user@dev"],
         }
 
         result = validate_profile("dev", profile_config)
@@ -269,9 +270,7 @@ class TestValidateProfile:
         assert result is True
 
     def test_validate_profile_minimal(self):
-        profile_config = {
-            "commands": []
-        }
+        profile_config = {"commands": []}
 
         result = validate_profile("dev", profile_config)
 
@@ -280,10 +279,14 @@ class TestValidateProfile:
     def test_validate_profile_invalid_name(self):
         profile_config = {"commands": []}
 
-        with pytest.raises(ConfigError, match="Profile names must be non-empty strings"):
+        with pytest.raises(
+            ConfigError, match="Profile names must be non-empty strings"
+        ):
             validate_profile("", profile_config)
 
-        with pytest.raises(ConfigError, match="Profile names must be non-empty strings"):
+        with pytest.raises(
+            ConfigError, match="Profile names must be non-empty strings"
+        ):
             validate_profile(123, profile_config)
 
     def test_validate_profile_invalid_config_type(self):
@@ -291,57 +294,50 @@ class TestValidateProfile:
             validate_profile("dev", "not a dict")
 
     def test_validate_profile_invalid_session_name(self):
-        profile_config = {
-            "session_name": "",
-            "commands": []
-        }
+        profile_config = {"session_name": "", "commands": []}
 
-        with pytest.raises(ConfigError, match="Profile 'dev' session_name must be a non-empty string"):
+        with pytest.raises(
+            ConfigError, match="Profile 'dev' session_name must be a non-empty string"
+        ):
             validate_profile("dev", profile_config)
 
     def test_validate_profile_invalid_identity_type(self):
-        profile_config = {
-            "default_identity": 123,
-            "commands": []
-        }
+        profile_config = {"default_identity": 123, "commands": []}
 
-        with pytest.raises(ConfigError, match="Profile 'dev' default_identity must be a string"):
+        with pytest.raises(
+            ConfigError, match="Profile 'dev' default_identity must be a string"
+        ):
             validate_profile("dev", profile_config)
 
-    @patch('pathlib.Path.exists')
+    @patch("pathlib.Path.exists")
     def test_validate_profile_identity_not_found(self, mock_exists):
         mock_exists.return_value = False
 
-        profile_config = {
-            "default_identity": "~/.ssh/nonexistent_key",
-            "commands": []
-        }
+        profile_config = {"default_identity": "~/.ssh/nonexistent_key", "commands": []}
 
         with pytest.raises(ConfigError, match="Profile 'dev' identity file not found"):
             validate_profile("dev", profile_config)
 
     def test_validate_profile_invalid_commands_type(self):
-        profile_config = {
-            "commands": "not a list"
-        }
+        profile_config = {"commands": "not a list"}
 
         with pytest.raises(ConfigError, match="Profile 'dev' commands must be a list"):
             validate_profile("dev", profile_config)
 
     def test_validate_profile_invalid_command_type(self):
-        profile_config = {
-            "commands": [123, "valid command"]
-        }
+        profile_config = {"commands": [123, "valid command"]}
 
-        with pytest.raises(ConfigError, match="Profile 'dev' commands\\[0\\] must be a string"):
+        with pytest.raises(
+            ConfigError, match="Profile 'dev' commands\\[0\\] must be a string"
+        ):
             validate_profile("dev", profile_config)
 
     def test_validate_profile_empty_command(self):
-        profile_config = {
-            "commands": ["", "valid command"]
-        }
+        profile_config = {"commands": ["", "valid command"]}
 
-        with pytest.raises(ConfigError, match="Profile 'dev' commands\\[0\\] cannot be empty"):
+        with pytest.raises(
+            ConfigError, match="Profile 'dev' commands\\[0\\] cannot be empty"
+        ):
             validate_profile("dev", profile_config)
 
 
@@ -379,7 +375,7 @@ class TestCreateProfileTemplate:
             "dev",
             session_name="portmux-dev",
             default_identity="~/.ssh/dev_key",
-            commands=["portmux add L 3000:localhost:3000 user@dev"]
+            commands=["portmux add L 3000:localhost:3000 user@dev"],
         )
 
         assert result["session_name"] == "portmux-dev"
@@ -387,10 +383,7 @@ class TestCreateProfileTemplate:
         assert result["commands"] == ["portmux add L 3000:localhost:3000 user@dev"]
 
     def test_create_profile_template_partial(self):
-        result = create_profile_template(
-            "dev",
-            session_name="portmux-dev"
-        )
+        result = create_profile_template("dev", session_name="portmux-dev")
 
         assert result["session_name"] == "portmux-dev"
         assert result["default_identity"] is None
@@ -404,14 +397,12 @@ class TestProfileSummary:
             default_identity="~/.ssh/id_rsa",
             profiles={
                 "dev": ProfileConfig(
-                    session_name="portmux-dev",
-                    commands=["cmd1", "cmd2"]
+                    session_name="portmux-dev", commands=["cmd1", "cmd2"]
                 ),
                 "prod": ProfileConfig(
-                    default_identity="~/.ssh/prod_key",
-                    commands=["cmd1"]
-                )
-            }
+                    default_identity="~/.ssh/prod_key", commands=["cmd1"]
+                ),
+            },
         )
 
         result = profile_summary(config)
@@ -441,11 +432,9 @@ class TestProfileSummary:
         assert result["profiles"] == {}
 
     def test_profile_summary_invalid_profile(self):
-        config = _config(profiles={
-            "dev": ProfileConfig(commands=[])
-        })
+        config = _config(profiles={"dev": ProfileConfig(commands=[])})
 
-        with patch('portmux.profiles.get_profile_info') as mock_get_info:
+        with patch("portmux.core.profiles.get_profile_info") as mock_get_info:
             mock_get_info.side_effect = ConfigError("Invalid profile")
 
             result = profile_summary(config)
@@ -458,13 +447,13 @@ class TestMergeProfileWithBase:
         base_config = _config(
             session_name="portmux",
             default_identity="~/.ssh/id_rsa",
-            startup=StartupConfig(auto_execute=True, commands=[])
+            startup=StartupConfig(auto_execute=True, commands=[]),
         )
 
         profile_config = ProfileConfig(
             session_name="portmux-dev",
             default_identity="~/.ssh/dev_key",
-            commands=["portmux add L 3000:localhost:3000 user@dev"]
+            commands=["portmux add L 3000:localhost:3000 user@dev"],
         )
 
         result = merge_profile_with_base(base_config, profile_config)
@@ -478,7 +467,7 @@ class TestMergeProfileWithBase:
         base_config = _config(
             session_name="portmux",
             default_identity="~/.ssh/id_rsa",
-            startup=StartupConfig(auto_execute=True, commands=["base_cmd"])
+            startup=StartupConfig(auto_execute=True, commands=["base_cmd"]),
         )
 
         profile_config = ProfileConfig(
@@ -496,12 +485,10 @@ class TestMergeProfileWithBase:
     def test_merge_profile_with_base_commands_only(self):
         base_config = _config(
             session_name="portmux",
-            startup=StartupConfig(auto_execute=False, commands=["base_cmd"])
+            startup=StartupConfig(auto_execute=False, commands=["base_cmd"]),
         )
 
-        profile_config = ProfileConfig(
-            commands=["profile_cmd1", "profile_cmd2"]
-        )
+        profile_config = ProfileConfig(commands=["profile_cmd1", "profile_cmd2"])
 
         result = merge_profile_with_base(base_config, profile_config)
 
@@ -512,9 +499,7 @@ class TestMergeProfileWithBase:
     def test_merge_profile_with_base_no_startup_section(self):
         base_config = _config(session_name="portmux")
 
-        profile_config = ProfileConfig(
-            commands=["profile_cmd"]
-        )
+        profile_config = ProfileConfig(commands=["profile_cmd"])
 
         result = merge_profile_with_base(base_config, profile_config)
 

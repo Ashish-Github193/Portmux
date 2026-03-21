@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import re
 
-from .backend import TunnelBackend
-from .exceptions import SSHError, TmuxError
-from .models import ForwardInfo, ParsedSpec
-from .tmux_backend import TmuxBackend
+from ..backend import TunnelBackend, TmuxBackend
+from ..exceptions import SSHError, TmuxError
+from ..models import ForwardInfo, ParsedSpec
 
 
 def _default_backend() -> TunnelBackend:
@@ -32,7 +31,8 @@ def parse_port_spec(spec: str) -> ParsedSpec:
 
     if not match:
         raise SSHError(
-            f"Invalid port specification '{spec}'. Expected format: 'local_port:remote_host:remote_port'"
+            f"Invalid port specification '{spec}'."
+            " Expected format: 'local_port:remote_host:remote_port'"
         )
 
     local_port_str, remote_host, remote_port_str = match.groups()

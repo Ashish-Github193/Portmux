@@ -7,15 +7,15 @@ from click.testing import CliRunner
 
 from portmux.commands.list import list as list_cmd
 from portmux.models import ForwardInfo, PortmuxConfig
-from portmux.output import Output
+from portmux.core.output import Output
 
 
 class TestListCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.list.load_config")
     def test_list_active_forwards(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -47,8 +47,8 @@ class TestListCommand:
         assert "L:8080:localhost:80" in result.output
         assert "1 forward(s) active" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.list.load_config")
     def test_list_no_forwards(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -72,7 +72,7 @@ class TestListCommand:
         assert "No active forwards" in result.output
         assert "portmux add" in result.output
 
-    @patch("portmux.session.session_exists")
+    @patch("portmux.tmux.session.session_exists")
     @patch("portmux.commands.list.load_config")
     def test_list_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -93,8 +93,8 @@ class TestListCommand:
         assert "not active" in result.output
         assert "portmux init" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.list.load_config")
     def test_list_json_output(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -131,7 +131,7 @@ class TestListCommand:
         assert len(output_data["forwards"]) == 1
         assert output_data["forwards"][0]["name"] == "L:8080:localhost:80"
 
-    @patch("portmux.session.session_exists")
+    @patch("portmux.tmux.session.session_exists")
     @patch("portmux.commands.list.load_config")
     def test_list_json_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False

@@ -2,7 +2,7 @@
 
 import subprocess
 
-from .exceptions import TmuxError
+from ..exceptions import TmuxError
 
 
 def create_session(session_name: str = "portmux") -> bool:

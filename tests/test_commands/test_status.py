@@ -6,15 +6,15 @@ from click.testing import CliRunner
 
 from portmux.commands.status import status
 from portmux.models import ForwardInfo, PortmuxConfig
-from portmux.output import Output
+from portmux.core.output import Output
 
 
 class TestStatusCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.status.load_config")
     def test_status_active_session_with_forwards(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -56,8 +56,8 @@ class TestStatusCommand:
         assert "L:8080:localhost:80" in result.output
         assert "R:9000:localhost:9000" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.status.load_config")
     def test_status_active_session_no_forwards(
         self, mock_load_config, mock_list_forwards, mock_session_exists
@@ -83,7 +83,7 @@ class TestStatusCommand:
         assert "No forwards to display" in result.output
         assert "portmux add" in result.output
 
-    @patch("portmux.session.session_exists")
+    @patch("portmux.tmux.session.session_exists")
     @patch("portmux.commands.status.load_config")
     def test_status_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -104,8 +104,8 @@ class TestStatusCommand:
         assert "not active" in result.output
         assert "portmux init" in result.output
 
-    @patch("portmux.session.session_exists")
-    @patch("portmux.service._list_forwards")
+    @patch("portmux.tmux.session.session_exists")
+    @patch("portmux.core.service._list_forwards")
     @patch("portmux.commands.status.load_config")
     def test_status_check_connections_placeholder(
         self, mock_load_config, mock_list_forwards, mock_session_exists

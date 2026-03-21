@@ -4,27 +4,26 @@ from __future__ import annotations
 
 import time
 
-from .backend import TunnelBackend
+from ..backend import TunnelBackend, TmuxBackend
 from .config import (
     get_default_identity,
 )
-from .forwards import (
+from ..ssh.forwards import (
     add_forward as _add_forward,
 )
-from .forwards import (
+from ..ssh.forwards import (
     list_forwards as _list_forwards,
 )
-from .forwards import (
+from ..ssh.forwards import (
     refresh_forward as _refresh_forward,
 )
-from .forwards import (
+from ..ssh.forwards import (
     remove_forward as _remove_forward,
 )
-from .models import ForwardInfo, PortmuxConfig
+from ..models import ForwardInfo, PortmuxConfig
 from .output import Output
 from .profiles import list_available_profiles, load_profile, profile_exists
 from .startup import execute_startup_commands, startup_commands_enabled
-from .tmux_backend import TmuxBackend
 
 
 class PortmuxService:

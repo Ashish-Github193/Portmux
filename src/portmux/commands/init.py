@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import click
 
-from ..config import create_default_config, get_config_path, load_config
-from ..output import Output
-from ..service import PortmuxService
+from ..core.config import create_default_config, get_config_path, load_config
+from ..core.output import Output
+from ..core.service import PortmuxService
 from ..utils import handle_error
 
 
@@ -14,12 +14,8 @@ from ..utils import handle_error
 @click.option(
     "--force", "-f", is_flag=True, help="Force recreation of existing session"
 )
-@click.option(
-    "--profile", "-p", type=str, help="Initialize with a specific profile"
-)
-@click.option(
-    "--no-startup", is_flag=True, help="Skip startup command execution"
-)
+@click.option("--profile", "-p", type=str, help="Initialize with a specific profile")
+@click.option("--no-startup", is_flag=True, help="Skip startup command execution")
 @click.pass_context
 def init(ctx: click.Context, force: bool, profile: str, no_startup: bool):
     """Initialize PortMUX session and configuration.
@@ -48,16 +44,12 @@ def init(ctx: click.Context, force: bool, profile: str, no_startup: bool):
 
         try:
             config = load_config(config_path)
-            output.verbose(
-                f"Configuration loaded from {get_config_path()}", verbose
-            )
+            output.verbose(f"Configuration loaded from {get_config_path()}", verbose)
         except Exception:
             output.verbose("Creating default configuration...", verbose)
             create_default_config()
             config = load_config(config_path)
-            output.success(
-                f"Default configuration created at {get_config_path()}"
-            )
+            output.success(f"Default configuration created at {get_config_path()}")
 
         # Create service and delegate
         svc = PortmuxService(config, output, base_session_name)

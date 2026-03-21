@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from portmux.exceptions import TmuxError
-from portmux.session import create_session, kill_session, session_exists
+from portmux.tmux.session import create_session, kill_session, session_exists
 
 
 class TestCreateSession:

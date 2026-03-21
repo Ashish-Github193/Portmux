@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import click
 import colorama
 
 from . import __version__
-from .output import Output
+from .core.output import Output
 
 # Initialize colorama for cross-platform colored output
 colorama.init()
@@ -22,7 +20,7 @@ colorama.init()
 @click.option("--config", "-c", type=click.Path(), help="Path to config file")
 @click.version_option(version=__version__, prog_name="PortMUX")
 @click.pass_context
-def main(ctx: click.Context, verbose: bool, session: str, config: Optional[str]):
+def main(ctx: click.Context, verbose: bool, session: str, config: str | None):
     """PortMUX - Port Multiplexer and Manager for SSH forwards.
 
     Manage SSH port forwards through a persistent tmux session.
@@ -41,9 +39,8 @@ def main(ctx: click.Context, verbose: bool, session: str, config: Optional[str])
 
 
 # Import and register command modules
-from .commands import add, init, profile
-from .commands import list as list_cmd
-from .commands import refresh, remove, status
+from .commands import add, init, profile, refresh, remove, status  # noqa: E402
+from .commands import list as list_cmd  # noqa: E402
 
 main.add_command(init.init)
 main.add_command(status.status)

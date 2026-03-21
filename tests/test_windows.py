@@ -5,8 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from portmux.exceptions import TmuxError
-from portmux.windows import (create_window, kill_window, list_windows,
-                             window_exists)
+from portmux.tmux.windows import create_window, kill_window, list_windows, window_exists
 
 
 class TestCreateWindow:
@@ -247,7 +246,7 @@ class TestListWindows:
 
 class TestWindowExists:
     def test_window_exists_true(self, mocker):
-        mock_list_windows = mocker.patch("portmux.windows.list_windows")
+        mock_list_windows = mocker.patch("portmux.tmux.windows.list_windows")
         mock_list_windows.return_value = [
             {"name": "L:8080:localhost:80", "status": "-", "command": "ssh"},
             {"name": "R:9000:localhost:9000", "status": "*", "command": "ssh"},
@@ -259,7 +258,7 @@ class TestWindowExists:
         mock_list_windows.assert_called_once_with("portmux")
 
     def test_window_exists_false(self, mocker):
-        mock_list_windows = mocker.patch("portmux.windows.list_windows")
+        mock_list_windows = mocker.patch("portmux.tmux.windows.list_windows")
         mock_list_windows.return_value = [
             {"name": "L:8080:localhost:80", "status": "-", "command": "ssh"},
             {"name": "R:9000:localhost:9000", "status": "*", "command": "ssh"},
@@ -271,7 +270,7 @@ class TestWindowExists:
         mock_list_windows.assert_called_once_with("portmux")
 
     def test_window_exists_custom_session(self, mocker):
-        mock_list_windows = mocker.patch("portmux.windows.list_windows")
+        mock_list_windows = mocker.patch("portmux.tmux.windows.list_windows")
         mock_list_windows.return_value = [
             {"name": "test-window", "status": "-", "command": "bash"}
         ]
@@ -282,7 +281,7 @@ class TestWindowExists:
         mock_list_windows.assert_called_once_with("custom-session")
 
     def test_window_exists_empty_list(self, mocker):
-        mock_list_windows = mocker.patch("portmux.windows.list_windows")
+        mock_list_windows = mocker.patch("portmux.tmux.windows.list_windows")
         mock_list_windows.return_value = []
 
         result = window_exists("any-window")

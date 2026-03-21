@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import toml
 
-from .exceptions import ConfigError
-from .models import PortmuxConfig, ProfileConfig, StartupConfig
+from ..exceptions import ConfigError
+from ..models import PortmuxConfig, ProfileConfig, StartupConfig
 
 DEFAULT_CONFIG = {
     "session_name": "portmux",
@@ -39,7 +38,7 @@ def get_config_path() -> Path:
     return config_dir / "config.toml"
 
 
-def load_config(config_path: Optional[str] = None) -> PortmuxConfig:
+def load_config(config_path: str | None = None) -> PortmuxConfig:
     """Load configuration from TOML file.
 
     Args:
@@ -69,11 +68,15 @@ def load_config(config_path: Optional[str] = None) -> PortmuxConfig:
 
     try:
         # Load configuration from file
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             file_config = toml.load(f)
 
         # Handle both new structured format and legacy flat format
-        if "general" in file_config or "startup" in file_config or "profiles" in file_config:
+        if (
+            "general" in file_config
+            or "startup" in file_config
+            or "profiles" in file_config
+        ):
             # New structured format
             if "general" in file_config:
                 config["general"].update(file_config["general"])
@@ -99,11 +102,11 @@ def load_config(config_path: Optional[str] = None) -> PortmuxConfig:
 
     except toml.TomlDecodeError as e:
         raise ConfigError(f"Invalid TOML in config file '{config_file}': {e}")
-    except (OSError, IOError) as e:
+    except OSError as e:
         raise ConfigError(f"Failed to read config file '{config_file}': {e}")
 
 
-def _build_config(raw: Dict) -> PortmuxConfig:
+def _build_config(raw: dict) -> PortmuxConfig:
     """Build a PortmuxConfig from a validated raw dict structure."""
     general = raw.get("general", {})
     startup_raw = raw.get("startup", {})
@@ -130,7 +133,7 @@ def _build_config(raw: Dict) -> PortmuxConfig:
     )
 
 
-def save_config(config: PortmuxConfig, config_path: Optional[str] = None) -> None:
+def save_config(config: PortmuxConfig, config_path: str | None = None) -> None:
     """Save configuration to TOML file.
 
     Args:
@@ -159,13 +162,13 @@ def save_config(config: PortmuxConfig, config_path: Optional[str] = None) -> Non
         with open(config_file, "w") as f:
             toml.dump(toml_dict, f)
 
-    except (OSError, IOError) as e:
+    except OSError as e:
         raise ConfigError(f"Failed to save config file '{config_file}': {e}")
 
 
-def _config_to_toml_dict(config: PortmuxConfig) -> Dict:
+def _config_to_toml_dict(config: PortmuxConfig) -> dict:
     """Convert PortmuxConfig to a structured dict for TOML serialization."""
-    toml_dict: Dict = {
+    toml_dict: dict = {
         "general": {
             "session_name": config.session_name,
             "default_identity": config.default_identity,
@@ -182,7 +185,7 @@ def _config_to_toml_dict(config: PortmuxConfig) -> Dict:
     if config.profiles:
         toml_dict["profiles"] = {}
         for name, profile in config.profiles.items():
-            profile_dict: Dict = {}
+            profile_dict: dict = {}
             if profile.session_name is not None:
                 profile_dict["session_name"] = profile.session_name
             if profile.default_identity is not None:
@@ -194,7 +197,7 @@ def _config_to_toml_dict(config: PortmuxConfig) -> Dict:
     return toml_dict
 
 
-def get_default_identity() -> Optional[str]:
+def get_default_identity() -> str | None:
     """Get path to default SSH identity file.
 
     Returns:
@@ -213,13 +216,14 @@ def get_default_identity() -> Optional[str]:
     return None
 
 
-def validate_config(config: Dict) -> bool:
+def validate_config(config: dict) -> bool:
     """Validate configuration structure and values.
 
     Operates on raw dicts (used during TOML loading and before saving).
 
     Args:
-        config: Configuration dict to validate (either structured or backward-compatible format)
+        config: Configuration dict to validate
+            (either structured or backward-compatible format)
 
     Returns:
         True if valid
@@ -235,8 +239,9 @@ def validate_config(config: Dict) -> bool:
         profiles_config = config.get("profiles", {})
     else:
         # Backward-compatible format or legacy format
-        general_config = {k: v for k, v in config.items()
-                         if k not in ["startup", "profiles"]}
+        general_config = {
+            k: v for k, v in config.items() if k not in ["startup", "profiles"]
+        }
         startup_config = config.get("startup", {})
         profiles_config = config.get("profiles", {})
 
@@ -252,7 +257,7 @@ def validate_config(config: Dict) -> bool:
     return True
 
 
-def _validate_general_config(config: Dict) -> bool:
+def _validate_general_config(config: dict) -> bool:
     """Validate general configuration section."""
     required_keys = ["session_name"]
 
@@ -278,7 +283,7 @@ def _validate_general_config(config: Dict) -> bool:
 
     # Validate reconnect_delay
     reconnect_delay = config.get("reconnect_delay", 1)
-    if not isinstance(reconnect_delay, (int, float)) or reconnect_delay < 0:
+    if not isinstance(reconnect_delay, int | float) or reconnect_delay < 0:
         raise ConfigError("'reconnect_delay' must be a non-negative number")
 
     # Validate max_retries
@@ -289,7 +294,7 @@ def _validate_general_config(config: Dict) -> bool:
     return True
 
 
-def _validate_startup_config(config: Dict) -> bool:
+def _validate_startup_config(config: dict) -> bool:
     """Validate startup configuration section."""
     if not config:
         return True  # Empty startup config is valid
@@ -314,7 +319,7 @@ def _validate_startup_config(config: Dict) -> bool:
     return True
 
 
-def _validate_profiles_config(config: Dict) -> bool:
+def _validate_profiles_config(config: dict) -> bool:
     """Validate profiles configuration section."""
     if not config:
         return True  # Empty profiles config is valid
@@ -335,23 +340,30 @@ def _validate_profiles_config(config: Dict) -> bool:
     return True
 
 
-def _validate_profile(profile_name: str, profile_config: Dict) -> bool:
+def _validate_profile(profile_name: str, profile_config: dict) -> bool:
     """Validate a single profile configuration."""
     # Validate session_name if provided
     session_name = profile_config.get("session_name")
     if session_name is not None:
         if not isinstance(session_name, str) or not session_name.strip():
-            raise ConfigError(f"Profile '{profile_name}' session_name must be a non-empty string")
+            raise ConfigError(
+                f"Profile '{profile_name}' session_name must be a non-empty string"
+            )
 
     # Validate default_identity if provided
     default_identity = profile_config.get("default_identity")
     if default_identity is not None:
         if not isinstance(default_identity, str):
-            raise ConfigError(f"Profile '{profile_name}' default_identity must be a string")
+            raise ConfigError(
+                f"Profile '{profile_name}' default_identity must be a string"
+            )
 
         identity_path = Path(default_identity).expanduser()
         if not identity_path.exists():
-            raise ConfigError(f"Profile '{profile_name}' identity file not found: '{default_identity}'")
+            raise ConfigError(
+                f"Profile '{profile_name}' identity file not found:"
+                f" '{default_identity}'"
+            )
 
     # Validate commands
     commands = profile_config.get("commands", [])
@@ -360,7 +372,9 @@ def _validate_profile(profile_name: str, profile_config: Dict) -> bool:
 
     for i, command in enumerate(commands):
         if not isinstance(command, str):
-            raise ConfigError(f"Profile '{profile_name}' commands[{i}] must be a string")
+            raise ConfigError(
+                f"Profile '{profile_name}' commands[{i}] must be a string"
+            )
         if not command.strip():
             raise ConfigError(f"Profile '{profile_name}' commands[{i}] cannot be empty")
 
@@ -382,7 +396,7 @@ def has_startup_commands(config: PortmuxConfig) -> bool:
     return config.startup.auto_execute and len(config.startup.commands) > 0
 
 
-def get_profile_names(config: PortmuxConfig) -> List[str]:
+def get_profile_names(config: PortmuxConfig) -> list[str]:
     """Get list of available profile names."""
     return list(config.profiles.keys())
 

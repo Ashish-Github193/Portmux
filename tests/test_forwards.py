@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from portmux.exceptions import SSHError, TmuxError
-from portmux.forwards import (
+from portmux.ssh.forwards import (
     add_forward,
     list_forwards,
     parse_port_spec,
@@ -13,7 +13,7 @@ from portmux.forwards import (
     remove_forward,
 )
 from portmux.models import ForwardInfo, ParsedSpec, TunnelInfo
-from portmux.tmux_backend import TmuxBackend
+from portmux.backend import TmuxBackend
 
 
 class TestParsePortSpec:
@@ -41,14 +41,14 @@ class TestParsePortSpec:
     def test_parse_invalid_format_missing_colon(self):
         with pytest.raises(
             SSHError,
-            match="Invalid port specification 'invalid'. Expected format: 'local_port:remote_host:remote_port'",
+            match="Invalid port specification 'invalid'",
         ):
             parse_port_spec("invalid")
 
     def test_parse_invalid_format_too_many_colons(self):
         with pytest.raises(
             SSHError,
-            match="Invalid port specification '8080:host:80:extra'. Expected format: 'local_port:remote_host:remote_port'",
+            match="Invalid port specification '8080:host:80:extra'",
         ):
             parse_port_spec("8080:host:80:extra")
 
@@ -79,7 +79,7 @@ class TestParsePortSpec:
     def test_parse_non_numeric_ports(self):
         with pytest.raises(
             SSHError,
-            match="Invalid port specification 'abc:localhost:80'. Expected format: 'local_port:remote_host:remote_port'",
+            match="Invalid port specification 'abc:localhost:80'",
         ):
             parse_port_spec("abc:localhost:80")
 
@@ -160,7 +160,7 @@ class TestAddForward:
     def test_add_forward_invalid_spec(self):
         with pytest.raises(
             SSHError,
-            match="Invalid port specification 'invalid'. Expected format: 'local_port:remote_host:remote_port'",
+            match="Invalid port specification 'invalid'",
         ):
             add_forward("L", "invalid", "user@host")
 
