@@ -12,6 +12,7 @@ dependencies = [
     "toml>=0.10.2",
     "click>=8.1.0",
     "colorama>=0.4.6",
+    "libtmux>=0.55.0",
 ]
 
 [build-system]
