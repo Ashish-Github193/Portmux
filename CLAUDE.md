@@ -419,83 +419,38 @@ docker run --rm portmux-e2e
 - **Phase 6** (planned): E2E tests in Docker (real tmux + sshd), SSH agent awareness
 - **Phase 7** (planned): TUI mode using Rich layouts — Output abstraction enables this
 
-## Missing Pieces & Known Gaps
+## Resolved
 
-### 1. ~~No Tunnel Health Verification~~ (Resolved)
-`HealthChecker` performs three concurrent checks per tunnel: process alive, pane output
-scan, TCP port probe. `portmux status` runs on-demand health checks. `portmux watch`
-provides continuous foreground monitoring. Background monitor daemon (`_monitor` window)
-runs persistent health checks with auto-restart.
+1. **Tunnel Health Verification** — `HealthChecker` performs three concurrent checks per tunnel: process alive, pane output scan, TCP port probe. `portmux status` runs on-demand health checks. Background monitor daemon runs persistent checks with auto-restart.
+2. **Post-Add Connection Validation** — `commands/add.py` performs TCP port probe after creating local forwards (skip with `--no-check`). Results logged to health log.
+3. **Status Connection Checking** — `commands/status.py` runs async health checks on all forwards, displays health column, monitor state, and recent error events from log.
+4. **`max_retries` Config Field** — `TunnelMonitor` uses `config.max_retries` to limit auto-restart attempts per tunnel. After exhausting retries, tunnel is marked dead.
+5. **Forward Failure Detection & Auto-Restart** — `TunnelMonitor` detects dead and vanished tunnels. Auto-restart via `auto_reconnect`. Background monitor persists in `_monitor` tmux window with health logging.
+6. **Tunnel Backend Abstraction** — `TunnelBackend` Protocol decouples tunnel lifecycle from tmux. `TmuxBackend` is the default. New backends implement 7 methods.
 
-### 2. ~~Post-Add Connection Validation~~ (Resolved)
-`commands/add.py` performs TCP port probe after creating local forwards (skip with
-`--no-check`). Results logged to health log via `svc.logger`.
+## Known Gaps
 
-### 3. ~~Status Connection Checking~~ (Resolved)
-`commands/status.py` runs async health checks on all forwards, displays health column
-in table, shows monitor running state, and recent error events from health log.
-
-### 4. List Status Column (Fake)
-`commands/list.py:18-19` declares `--status` / `include_status` and passes it to
-`create_forwards_table()`, but list intentionally does not run health checks (fast path).
-Use `portmux status` for health-checked output.
-
-### 5. ~~`max_retries` Config Field~~ (Resolved)
-`TunnelMonitor` uses `config.max_retries` to limit auto-restart attempts per tunnel.
-After exhausting retries, the tunnel is marked dead and abandoned.
-
-### 6. No Passphrase / SSH Agent Awareness
+### 1. No Passphrase / SSH Agent Awareness
 `config.py:get_default_identity()` checks if key files exist on disk but doesn't verify
 they're usable (loaded in agent, passphrase-free, or agent-forwarded). A key with a
-passphrase that isn't in `ssh-agent` will cause a silent tunnel failure (see gap #1).
+passphrase that isn't in `ssh-agent` will cause a silent tunnel failure.
 There's no `ssh-add -l` check or `SSH_AUTH_SOCK` validation.
 
-### 7. ~~No Forward Failure Detection or Auto-Restart~~ (Resolved)
-`TunnelMonitor` detects dead and vanished tunnels. When `auto_reconnect` is enabled
-(default), dead tunnels are automatically restarted up to `max_retries` times.
-Background monitor daemon persists in `_monitor` tmux window, logging all events to
-`~/.portmux/health.log`. Vanished tunnels (window disappeared) also trigger restart.
-
-### 8. ~~No Tunnel Backend Abstraction~~ (Resolved)
-`TunnelBackend` Protocol now abstracts tunnel lifecycle. `TmuxBackend` is the default
-implementation. `ssh/forwards.py` accepts an optional `backend` parameter. Adding a new
-backend (subprocess, systemd) means implementing 7 methods — no changes to forwards or service.
-
-### 9. Startup Command Error Visibility
+### 2. Startup Command Error Visibility
 `startup.py` executes commands via `subprocess.run()` with a 60s timeout. If a startup
 command fails, it's reported as a warning ("Some startup commands failed") but the
 actual stderr/stdout is not surfaced to the user. Debugging which command failed and
 why requires manually re-running the command.
 
-### 10. No Config File Watcher or Reload
-Changing `~/.portmux/config.toml` has no effect on a running session. There's no
-`portmux reload` command, no file watcher, and no way to apply config changes without
-destroying and re-initializing the session.
-
-### 11. No Session Persistence Across Reboots
-PortMUX relies on tmux sessions which don't survive system restarts. There's no
-systemd unit, no autostart mechanism, and no `portmux restore` command to recreate
-the previous session state from config.
-
-### 12. JSON Output Only on `list`
+### 3. JSON Output Only on `list`
 Only `portmux list --json` supports machine-readable output. `portmux status`,
-`portmux profile list`, and `portmux profile show` have no `--json` flag. Scripting
-against these commands requires parsing Rich-formatted terminal output.
+`portmux monitor status`, `portmux profile list`, and `portmux profile show` have
+no `--json` flag. Scripting against these commands requires parsing Rich-formatted output.
 
-### 13. No Dynamic Forward Support
-Only static local (`-L`) and remote (`-R`) forwards are supported. SSH dynamic
-forwards (`-D` for SOCKS proxy) and newer `-W` stdio forwarding are not handled.
-`validate_direction()` only accepts `L`/`R`.
-
-### 14. No Duplicate Forward Prevention Across Sessions
-`forwards.py:86` checks `window_exists()` within the current session, but if two
+### 4. No Duplicate Forward Prevention Across Sessions
+`forwards.py` checks `window_exists()` within the current session, but if two
 profiles bind the same local port in different sessions, both will try to bind
 `localhost:8080` — the second SSH will fail silently inside its tmux window.
-
-### 15. `list --status` Flag Accepted But Ignored
-`commands/list.py:18-19` declares `--status` / `include_status` and passes it to
-`create_forwards_table()`, but the table always shows the status column with the
-hardcoded "Running" value. The flag changes nothing visible.
 
 ## Common Gotchas
 
