@@ -39,7 +39,16 @@ def main(ctx: click.Context, verbose: bool, session: str, config: str | None):
 
 
 # Import and register command modules
-from .commands import add, init, profile, refresh, remove, status, watch  # noqa: E402
+from .commands import (  # noqa: E402
+    add,
+    init,
+    monitor,
+    profile,
+    refresh,
+    remove,
+    status,
+    watch,
+)
 from .commands import list as list_cmd  # noqa: E402
 
 main.add_command(init.init)
@@ -50,6 +59,8 @@ main.add_command(remove.remove)
 main.add_command(refresh.refresh)
 main.add_command(profile.profile)
 main.add_command(watch.watch)
+main.add_command(monitor.monitor)
+main.add_command(monitor.monitor_daemon)
 
 
 if __name__ == "__main__":

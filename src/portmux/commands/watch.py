@@ -1,4 +1,4 @@
-"""Watch command for PortMUX CLI."""
+"""Watch command for PortMUX CLI — foreground-only tunnel health monitor."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import click
 
 from ..core.config import load_config
 from ..core.output import Output
-from ..core.service import PortmuxService
 from ..utils import handle_error
 
 
@@ -20,7 +19,7 @@ from ..utils import handle_error
 )
 @click.pass_context
 def watch(ctx: click.Context, interval: float | None):
-    """Continuously monitor tunnel health with auto-restart.
+    """Continuously monitor tunnel health in the foreground.
 
     Periodically checks all active tunnels for:
     - SSH process alive
@@ -35,6 +34,9 @@ def watch(ctx: click.Context, interval: float | None):
 
     try:
         config = load_config(ctx.obj.get("config"))
+
+        from ..core.service import PortmuxService
+
         svc = PortmuxService(config, output, session_name)
 
         if not svc.session_is_active():

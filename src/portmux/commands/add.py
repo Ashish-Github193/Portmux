@@ -84,10 +84,16 @@ def add(
             results = asyncio.run(checker.check_all([forward]))
             if results and results[0].health == TunnelHealth.HEALTHY:
                 output.success("Connection verified")
+                svc.logger.info("Connection verified", tunnel=window_name)
             elif results:
                 output.warning(f"Connection check: {results[0].detail}")
+                svc.logger.warning(
+                    f"Connection check: {results[0].detail}", tunnel=window_name
+                )
             else:
                 output.warning("Could not verify connection")
+                svc.logger.warning("Could not verify connection", tunnel=window_name)
+            svc.logger.flush()
 
     except Exception as e:
         handle_error(e, output)

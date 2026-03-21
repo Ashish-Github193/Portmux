@@ -8,7 +8,8 @@ import click
 
 from ..core.config import load_config
 from ..core.output import Output
-from ..core.service import PortmuxService
+from ..core.service import MONITOR_WINDOW, PortmuxService
+from ..health.logger import HealthLogger
 from ..utils import create_forwards_table, handle_error
 
 
@@ -18,7 +19,7 @@ def status(ctx: click.Context):
     """Show PortMUX session status and active forwards.
 
     Displays information about the tmux session and all active port forwards
-    with health check results.
+    with health check results. Shows recent error events from the health log.
     """
     session_name = ctx.obj["session"]
     output: Output = ctx.obj.get("output") or Output()
@@ -33,6 +34,11 @@ def status(ctx: click.Context):
             output.error(f"Session '{session_name}' is not active")
             output.info("Run 'portmux init' to create the session")
             return
+
+        # Show monitor status
+        monitor_running = svc.backend.tunnel_exists(MONITOR_WINDOW, svc.session_name)
+        if monitor_running:
+            output.dim(f"Monitor: running ({MONITOR_WINDOW})")
 
         forwards = status_info["forwards"]
 
@@ -50,6 +56,20 @@ def status(ctx: click.Context):
 
             table = create_forwards_table(forwards, include_status=True)
             output.table(table)
+
+        # Show recent error events from health log
+        logger = HealthLogger()
+        recent_errors = logger.read_recent_errors(minutes=10)
+        if recent_errors:
+            output.print("")
+            output.warning(f"Recent events ({len(recent_errors)}):")
+            for line in recent_errors[-5:]:
+                output.error(f"  {line}")
+            if len(recent_errors) > 5:
+                output.dim(
+                    f"  ... and {len(recent_errors) - 5} more"
+                    " (use 'portmux watch --tail 20' to see all)"
+                )
 
     except Exception as e:
         handle_error(e, output)

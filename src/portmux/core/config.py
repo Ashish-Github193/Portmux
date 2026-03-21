@@ -135,6 +135,7 @@ def _build_config(raw: dict) -> PortmuxConfig:
         ),
         profiles=profiles,
         monitor=MonitorConfig(
+            enabled=health_raw.get("enabled", False),
             check_interval=health_raw.get("check_interval", 30.0),
             tcp_timeout=health_raw.get("tcp_timeout", 2.0),
             auto_reconnect=health_raw.get("auto_reconnect", True),
@@ -192,6 +193,7 @@ def _config_to_toml_dict(config: PortmuxConfig) -> dict:
     }
 
     toml_dict["monitor"] = {
+        "enabled": config.monitor.enabled,
         "check_interval": config.monitor.check_interval,
         "tcp_timeout": config.monitor.tcp_timeout,
         "auto_reconnect": config.monitor.auto_reconnect,
@@ -404,6 +406,10 @@ def _validate_monitor_config(config: dict) -> bool:
     """Validate monitor configuration section."""
     if not config:
         return True  # Empty monitor config is valid, defaults apply
+
+    enabled = config.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError("'monitor.enabled' must be a boolean")
 
     check_interval = config.get("check_interval", 30.0)
     if not isinstance(check_interval, int | float) or check_interval <= 0:
