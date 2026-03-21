@@ -11,6 +11,7 @@ from ..models import PortmuxConfig
 from ..ssh.forwards import list_forwards as _list_forwards
 from ..ssh.forwards import refresh_forward as _refresh_forward
 from .checker import HealthChecker
+from .logger import HealthLogger
 from .state import HealthResult, TunnelHealth, can_transition
 
 
@@ -26,11 +27,13 @@ class TunnelMonitor:
         config: PortmuxConfig,
         output: Output,
         session_name: str,
+        logger: HealthLogger | None = None,
     ):
         self.backend = backend
         self.config = config
         self.output = output
         self.session_name = session_name
+        self.logger = logger
         self.checker = HealthChecker(
             backend, session_name, tcp_timeout=config.monitor.tcp_timeout
         )
@@ -82,16 +85,26 @@ class TunnelMonitor:
                 retries >= self.config.max_retries
                 or not self.config.monitor.auto_reconnect
             ):
-                self.output.error(f"[{n}] Dead: gave up after {retries} retries")
+                msg = f"Dead: gave up after {retries} retries"
+                self.output.error(f"[{n}] {msg}")
+                if self.logger:
+                    self.logger.error(msg, tunnel=n)
                 vanished_dead.append(n)
                 del self._states[n]
                 self._retry_counts.pop(n, None)
                 continue
-            self.output.error(f"[{n}] Vanished: tunnel window disappeared")
+            msg = "Vanished: tunnel window disappeared"
+            self.output.error(f"[{n}] {msg}")
+            if self.logger:
+                self.logger.error(msg, tunnel=n)
             await self._maybe_restart(n)
 
         # Heartbeat summary
         self._print_heartbeat(results, vanished_dead=vanished_dead)
+
+        # Flush buffered log events to disk
+        if self.logger:
+            self.logger.flush()
 
         return results
 
@@ -112,10 +125,13 @@ class TunnelMonitor:
         total = sum(counts.values())
         healthy = counts.get("healthy", 0)
         if healthy == total:
-            self.output.dim(f"✓ {healthy}/{total} healthy — {now}")
+            msg = f"✓ {healthy}/{total} healthy — {now}"
         else:
             parts = [f"{count} {state}" for state, count in counts.items()]
-            self.output.dim(f"⚠ {', '.join(parts)} — {now}")
+            msg = f"⚠ {', '.join(parts)} — {now}"
+        self.output.dim(msg)
+        if self.logger:
+            self.logger.heartbeat(msg)
 
     async def _handle_result(self, result: HealthResult) -> None:
         """Process a health result and handle state transitions."""
@@ -131,14 +147,23 @@ class TunnelMonitor:
         self._states[result.name] = new
 
         if new == TunnelHealth.HEALTHY and prev != TunnelHealth.HEALTHY:
-            self.output.success(f"[{result.name}] Healthy: {result.detail}")
+            msg = f"Healthy: {result.detail}"
+            self.output.success(f"[{result.name}] {msg}")
+            if self.logger:
+                self.logger.info(msg, tunnel=result.name)
             self._retry_counts.pop(result.name, None)
 
         elif new == TunnelHealth.UNHEALTHY:
-            self.output.warning(f"[{result.name}] Unhealthy: {result.detail}")
+            msg = f"Unhealthy: {result.detail}"
+            self.output.warning(f"[{result.name}] {msg}")
+            if self.logger:
+                self.logger.warning(msg, tunnel=result.name)
 
         elif new == TunnelHealth.DEAD:
-            self.output.error(f"[{result.name}] Dead: {result.detail}")
+            msg = f"Dead: {result.detail}"
+            self.output.error(f"[{result.name}] {msg}")
+            if self.logger:
+                self.logger.error(msg, tunnel=result.name)
             if self.config.monitor.auto_reconnect:
                 await self._maybe_restart(result.name)
 
@@ -148,16 +173,18 @@ class TunnelMonitor:
         max_retries = self.config.max_retries
 
         if retries >= max_retries:
-            self.output.error(
-                f"[{name}] Max retries ({max_retries}) exhausted, giving up"
-            )
+            msg = f"Max retries ({max_retries}) exhausted, giving up"
+            self.output.error(f"[{name}] {msg}")
+            if self.logger:
+                self.logger.error(msg, tunnel=name)
             return
 
         self._retry_counts[name] = retries + 1
         self._states[name] = TunnelHealth.RESTARTING
-        self.output.info(
-            f"[{name}] Restarting (attempt {retries + 1}/{max_retries})..."
-        )
+        msg = f"Restarting (attempt {retries + 1}/{max_retries})..."
+        self.output.info(f"[{name}] {msg}")
+        if self.logger:
+            self.logger.info(msg, tunnel=name)
 
         try:
             await asyncio.to_thread(
@@ -166,5 +193,8 @@ class TunnelMonitor:
             self._states[name] = TunnelHealth.STARTING
             await asyncio.sleep(self.config.reconnect_delay)
         except Exception as e:
-            self.output.error(f"[{name}] Restart failed: {e}")
+            msg = f"Restart failed: {e}"
+            self.output.error(f"[{name}] {msg}")
+            if self.logger:
+                self.logger.error(msg, tunnel=name)
             self._states[name] = TunnelHealth.DEAD

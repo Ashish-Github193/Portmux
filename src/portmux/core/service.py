@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
+import sys
 import time
 
 from ..backend import TmuxBackend, TunnelBackend
+from ..health.logger import HealthLogger
 from ..models import ForwardInfo, PortmuxConfig
 from ..ssh.forwards import (
     add_forward as _add_forward,
@@ -25,12 +28,14 @@ from .output import Output
 from .profiles import list_available_profiles, load_profile, profile_exists
 from .startup import execute_startup_commands, startup_commands_enabled
 
+MONITOR_WINDOW = "_monitor"
+
 
 class PortmuxService:
     """Coordinates operations between config, session, forwards, startup.
 
     Commands become thin Click wrappers that parse args and call the service.
-    New features (health checks, hooks, event logging) get added here.
+    All mutations are logged to the health log via HealthLogger.
     """
 
     def __init__(
@@ -44,6 +49,7 @@ class PortmuxService:
         self.output = output
         self.session_name = session_name or config.session_name
         self.backend = backend or TmuxBackend()
+        self.logger = HealthLogger()
 
     def initialize(
         self,
@@ -87,6 +93,7 @@ class PortmuxService:
                     f"Destroying existing session '{self.session_name}'..."
                 )
                 self.backend.kill_session(self.session_name)
+                self.logger.info(f"Session '{self.session_name}' force-destroyed")
             else:
                 self.output.warning(f"Session '{self.session_name}' already exists")
                 self.output.print("Use --force to recreate the session")
@@ -100,6 +107,10 @@ class PortmuxService:
             self.output.success(
                 f"Successfully initialized PortMUX session '{self.session_name}'"
             )
+            profile_note = f" (profile: {profile})" if profile else ""
+            self.logger.info(f"Session '{self.session_name}' initialized{profile_note}")
+            # Flush so session events precede forward events from startup
+            self.logger.flush()
 
             if profile:
                 self.output.info(f"Initialized with profile: {profile}")
@@ -112,15 +123,22 @@ class PortmuxService:
                 )
                 if startup_success:
                     self.output.success("Startup commands completed successfully")
+                    self.logger.info("Startup commands completed")
                 else:
                     self.output.warning(
                         "Some startup commands failed (session still active)"
                     )
+                    self.logger.warning("Some startup commands failed")
             elif not run_startup:
                 self.output.verbose("Startup commands skipped (--no-startup)", verbose)
             elif verbose:
                 self.output.verbose("No startup commands configured", verbose)
 
+            # Auto-start background monitor if enabled
+            if self.config.monitor.enabled:
+                self.start_background_monitor(verbose=verbose)
+
+            self.logger.flush()
             self.output.info("Use 'portmux status' to view session details")
         else:
             self.output.warning(f"Session '{self.session_name}' already exists")
@@ -176,6 +194,8 @@ class PortmuxService:
         self.output.success(
             f"Successfully created {direction_name.lower()} forward '{window_name}'"
         )
+        self.logger.info(f"Forward created ({host})", tunnel=window_name)
+        self.logger.flush()
 
         return window_name
 
@@ -192,6 +212,8 @@ class PortmuxService:
         self.output.verbose(f"Removing forward '{name}'...", verbose)
         _remove_forward(name, self.session_name, backend=self.backend)
         self.output.success(f"Successfully removed forward '{name}'")
+        self.logger.info("Forward removed", tunnel=name)
+        self.logger.flush()
         return True
 
     def remove_all_forwards(self, verbose: bool = False) -> int:
@@ -215,12 +237,16 @@ class PortmuxService:
             try:
                 _remove_forward(forward.name, self.session_name, backend=self.backend)
                 removed_count += 1
+                self.logger.info("Forward removed", tunnel=forward.name)
                 if verbose:
                     self.output.success(f"Removed forward '{forward.name}'")
             except Exception as e:
                 self.output.error(f"Failed to remove '{forward.name}': {e}")
+                self.logger.error(f"Failed to remove: {e}", tunnel=forward.name)
 
         self.output.success(f"Successfully removed {removed_count} forward(s)")
+        self.logger.info(f"All forwards removed ({removed_count})")
+        self.logger.flush()
         return removed_count
 
     def destroy_session(self, verbose: bool = False) -> bool:
@@ -235,6 +261,8 @@ class PortmuxService:
         self.output.verbose(f"Destroying session '{self.session_name}'...", verbose)
         self.backend.kill_session(self.session_name)
         self.output.success(f"Session '{self.session_name}' destroyed successfully")
+        self.logger.info(f"Session '{self.session_name}' destroyed")
+        self.logger.flush()
         return True
 
     def list_forwards(self) -> list[ForwardInfo]:
@@ -258,6 +286,8 @@ class PortmuxService:
         _refresh_forward(name, self.session_name, backend=self.backend)
         if verbose:
             self.output.success(f"Refreshed forward '{name}'")
+        self.logger.info("Forward refreshed", tunnel=name)
+        self.logger.flush()
         return True
 
     def refresh_all(
@@ -300,6 +330,7 @@ class PortmuxService:
                         forward.name, self.session_name, backend=self.backend
                     )
                     refreshed_count += 1
+                    self.logger.info("Forward refreshed", tunnel=forward.name)
                     if verbose:
                         self.output.success(f"Refreshed forward '{forward.name}'")
 
@@ -309,12 +340,15 @@ class PortmuxService:
 
                 except Exception as e:
                     self.output.error(f"Failed to refresh '{forward.name}': {e}")
+                    self.logger.error(f"Failed to refresh: {e}", tunnel=forward.name)
 
                 progress.finish()
 
         self.output.success(
             f"Successfully refreshed {refreshed_count}/{len(forwards)} forward(s)"
         )
+        self.logger.info(f"All forwards refreshed ({refreshed_count}/{len(forwards)})")
+        self.logger.flush()
 
         # Handle startup reload
         if reload_startup:
@@ -365,8 +399,11 @@ class PortmuxService:
         forwards = self.list_forwards()
         return await checker.check_all(forwards)
 
-    def create_monitor(self):
+    def create_monitor(self, logger=None):
         """Create a TunnelMonitor for continuous health watching.
+
+        Args:
+            logger: Optional HealthLogger for file-based event logging
 
         Returns:
             TunnelMonitor instance
@@ -378,7 +415,28 @@ class PortmuxService:
             config=self.config,
             output=self.output,
             session_name=self.session_name,
+            logger=logger,
         )
+
+    def start_background_monitor(self, verbose: bool = False) -> bool:
+        """Start the background health monitor as a tmux window.
+
+        Returns:
+            True if started, False if already running
+        """
+        if self.backend.tunnel_exists(MONITOR_WINDOW, self.session_name):
+            self.output.verbose("Background monitor already running", verbose)
+            return False
+
+        cmd_parts = [shutil.which("portmux") or sys.executable + " -m portmux"]
+        cmd_parts.extend(["--session", self.session_name, "_monitor-daemon"])
+        cmd = " ".join(cmd_parts)
+
+        self.backend.create_tunnel(MONITOR_WINDOW, cmd, self.session_name)
+        self.output.success("Background health monitor started")
+        self.logger.info("Background monitor started")
+        self.logger.flush()
+        return True
 
     def handle_startup_reload(self, verbose: bool) -> None:
         """Handle startup command reload after refresh."""

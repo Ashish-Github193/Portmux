@@ -76,6 +76,7 @@ class ProfileConfig:
 class MonitorConfig:
     """Monitor configuration."""
 
+    enabled: bool = True
     check_interval: float = 30.0
     tcp_timeout: float = 2.0
     auto_reconnect: bool = True
