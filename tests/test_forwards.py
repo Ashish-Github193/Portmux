@@ -1,29 +1,42 @@
 """Tests for SSH forwarding functions."""
 
+from unittest.mock import Mock
 
 import pytest
 
 from portmux.exceptions import SSHError, TmuxError
-from portmux.forwards import (add_forward, list_forwards, parse_port_spec,
-                              refresh_forward, remove_forward)
-from portmux.models import ForwardInfo, ParsedSpec
+from portmux.forwards import (
+    add_forward,
+    list_forwards,
+    parse_port_spec,
+    refresh_forward,
+    remove_forward,
+)
+from portmux.models import ForwardInfo, ParsedSpec, TunnelInfo
+from portmux.tmux_backend import TmuxBackend
 
 
 class TestParsePortSpec:
     def test_parse_valid_spec(self):
         result = parse_port_spec("8080:localhost:80")
 
-        assert result == ParsedSpec(local_port=8080, remote_host="localhost", remote_port=80)
+        assert result == ParsedSpec(
+            local_port=8080, remote_host="localhost", remote_port=80
+        )
 
     def test_parse_with_ip_address(self):
         result = parse_port_spec("9000:192.168.1.10:443")
 
-        assert result == ParsedSpec(local_port=9000, remote_host="192.168.1.10", remote_port=443)
+        assert result == ParsedSpec(
+            local_port=9000, remote_host="192.168.1.10", remote_port=443
+        )
 
     def test_parse_with_hostname(self):
         result = parse_port_spec("3000:example.com:22")
 
-        assert result == ParsedSpec(local_port=3000, remote_host="example.com", remote_port=22)
+        assert result == ParsedSpec(
+            local_port=3000, remote_host="example.com", remote_port=22
+        )
 
     def test_parse_invalid_format_missing_colon(self):
         with pytest.raises(
@@ -72,65 +85,66 @@ class TestParsePortSpec:
 
 
 class TestAddForward:
-    def test_add_local_forward_success(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = False
-        mock_create_window = mocker.patch("portmux.forwards.create_window")
-        mock_create_window.return_value = True
+    def _make_backend(self, tunnel_exists=False, create_tunnel=True):
+        backend = Mock(spec=TmuxBackend)
+        backend.tunnel_exists.return_value = tunnel_exists
+        backend.create_tunnel.return_value = create_tunnel
+        return backend
 
-        result = add_forward("L", "8080:localhost:80", "user@host")
+    def test_add_local_forward_success(self):
+        backend = self._make_backend()
+
+        result = add_forward("L", "8080:localhost:80", "user@host", backend=backend)
 
         assert result == "L:8080:localhost:80"
-        mock_window_exists.assert_called_once_with("L:8080:localhost:80", "portmux")
-        mock_create_window.assert_called_once_with(
+        backend.tunnel_exists.assert_called_once_with("L:8080:localhost:80", "portmux")
+        backend.create_tunnel.assert_called_once_with(
             "L:8080:localhost:80", "ssh -N -L 8080:localhost:80 user@host", "portmux"
         )
 
-    def test_add_remote_forward_success(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = False
-        mock_create_window = mocker.patch("portmux.forwards.create_window")
-        mock_create_window.return_value = True
+    def test_add_remote_forward_success(self):
+        backend = self._make_backend()
 
-        result = add_forward("R", "9000:localhost:9000", "user@host")
+        result = add_forward("R", "9000:localhost:9000", "user@host", backend=backend)
 
         assert result == "R:9000:localhost:9000"
-        mock_create_window.assert_called_once_with(
+        backend.create_tunnel.assert_called_once_with(
             "R:9000:localhost:9000",
             "ssh -N -R 9000:localhost:9000 user@host",
             "portmux",
         )
 
-    def test_add_forward_with_identity(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = False
-        mock_create_window = mocker.patch("portmux.forwards.create_window")
-        mock_create_window.return_value = True
+    def test_add_forward_with_identity(self):
+        backend = self._make_backend()
 
-        result = add_forward("L", "8080:localhost:80", "user@host", "/path/to/key")
+        result = add_forward(
+            "L", "8080:localhost:80", "user@host", "/path/to/key", backend=backend
+        )
 
         assert result == "L:8080:localhost:80"
-        mock_create_window.assert_called_once_with(
+        backend.create_tunnel.assert_called_once_with(
             "L:8080:localhost:80",
             "ssh -N -L 8080:localhost:80 -i /path/to/key user@host",
             "portmux",
         )
 
-    def test_add_forward_custom_session(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = False
-        mock_create_window = mocker.patch("portmux.forwards.create_window")
-        mock_create_window.return_value = True
+    def test_add_forward_custom_session(self):
+        backend = self._make_backend()
 
         result = add_forward(
-            "L", "8080:localhost:80", "user@host", None, "custom-session"
+            "L",
+            "8080:localhost:80",
+            "user@host",
+            None,
+            "custom-session",
+            backend=backend,
         )
 
         assert result == "L:8080:localhost:80"
-        mock_window_exists.assert_called_once_with(
+        backend.tunnel_exists.assert_called_once_with(
             "L:8080:localhost:80", "custom-session"
         )
-        mock_create_window.assert_called_once_with(
+        backend.create_tunnel.assert_called_once_with(
             "L:8080:localhost:80",
             "ssh -N -L 8080:localhost:80 user@host",
             "custom-session",
@@ -143,226 +157,201 @@ class TestAddForward:
         ):
             add_forward("X", "8080:localhost:80", "user@host")
 
-    def test_add_forward_invalid_spec(self, mocker):
+    def test_add_forward_invalid_spec(self):
         with pytest.raises(
             SSHError,
             match="Invalid port specification 'invalid'. Expected format: 'local_port:remote_host:remote_port'",
         ):
             add_forward("L", "invalid", "user@host")
 
-    def test_add_forward_already_exists(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = True
+    def test_add_forward_already_exists(self):
+        backend = self._make_backend(tunnel_exists=True)
 
         with pytest.raises(
             SSHError, match="Forward 'L:8080:localhost:80' already exists"
         ):
-            add_forward("L", "8080:localhost:80", "user@host")
+            add_forward("L", "8080:localhost:80", "user@host", backend=backend)
 
-    def test_add_forward_create_window_fails(self, mocker):
-        mock_window_exists = mocker.patch("portmux.forwards.window_exists")
-        mock_window_exists.return_value = False
-        mock_create_window = mocker.patch("portmux.forwards.create_window")
-        mock_create_window.side_effect = TmuxError("Failed to create window")
+    def test_add_forward_create_window_fails(self):
+        backend = self._make_backend()
+        backend.create_tunnel.side_effect = TmuxError("Failed to create window")
 
         with pytest.raises(TmuxError, match="Failed to create window"):
-            add_forward("L", "8080:localhost:80", "user@host")
+            add_forward("L", "8080:localhost:80", "user@host", backend=backend)
 
 
 class TestRemoveForward:
-    def test_remove_forward_success(self, mocker):
-        mock_kill_window = mocker.patch("portmux.forwards.kill_window")
-        mock_kill_window.return_value = True
+    def test_remove_forward_success(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.kill_tunnel.return_value = True
 
-        result = remove_forward("L:8080:localhost:80")
-
-        assert result is True
-        mock_kill_window.assert_called_once_with("L:8080:localhost:80", "portmux")
-
-    def test_remove_forward_custom_session(self, mocker):
-        mock_kill_window = mocker.patch("portmux.forwards.kill_window")
-        mock_kill_window.return_value = True
-
-        result = remove_forward("L:8080:localhost:80", "custom-session")
+        result = remove_forward("L:8080:localhost:80", backend=backend)
 
         assert result is True
-        mock_kill_window.assert_called_once_with(
+        backend.kill_tunnel.assert_called_once_with("L:8080:localhost:80", "portmux")
+
+    def test_remove_forward_custom_session(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.kill_tunnel.return_value = True
+
+        result = remove_forward(
+            "L:8080:localhost:80", "custom-session", backend=backend
+        )
+
+        assert result is True
+        backend.kill_tunnel.assert_called_once_with(
             "L:8080:localhost:80", "custom-session"
         )
 
 
 class TestListForwards:
-    def test_list_forwards_success(self, mocker):
-        mock_list_windows = mocker.patch("portmux.forwards.list_windows")
-        mock_list_windows.return_value = [
-            {"name": "L:8080:localhost:80", "status": "-", "command": "ssh"},
-            {"name": "R:9000:localhost:9000", "status": "*", "command": "ssh"},
-            {
-                "name": "regular-window",
-                "status": "-",
-                "command": "bash",
-            },  # Should be ignored
+    def test_list_forwards_success(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = [
+            TunnelInfo(name="L:8080:localhost:80", status="-", command="ssh"),
+            TunnelInfo(name="R:9000:localhost:9000", status="*", command="ssh"),
+            TunnelInfo(name="regular-window", status="-", command="bash"),
         ]
 
-        result = list_forwards()
+        result = list_forwards(backend=backend)
 
         expected = [
-            ForwardInfo(name="L:8080:localhost:80", direction="L", spec="8080:localhost:80", status="-", command="ssh"),
-            ForwardInfo(name="R:9000:localhost:9000", direction="R", spec="9000:localhost:9000", status="*", command="ssh"),
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="-",
+                command="ssh",
+            ),
+            ForwardInfo(
+                name="R:9000:localhost:9000",
+                direction="R",
+                spec="9000:localhost:9000",
+                status="*",
+                command="ssh",
+            ),
         ]
         assert result == expected
-        mock_list_windows.assert_called_once_with("portmux")
+        backend.list_tunnels.assert_called_once_with("portmux")
 
-    def test_list_forwards_empty(self, mocker):
-        mock_list_windows = mocker.patch("portmux.forwards.list_windows")
-        mock_list_windows.return_value = []
+    def test_list_forwards_empty(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = []
 
-        result = list_forwards()
+        result = list_forwards(backend=backend)
 
         assert result == []
 
-    def test_list_forwards_custom_session(self, mocker):
-        mock_list_windows = mocker.patch("portmux.forwards.list_windows")
-        mock_list_windows.return_value = [
-            {"name": "L:3000:localhost:3000", "status": "-", "command": "ssh"}
+    def test_list_forwards_custom_session(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = [
+            TunnelInfo(name="L:3000:localhost:3000", status="-", command="ssh")
         ]
 
-        result = list_forwards("custom-session")
+        result = list_forwards("custom-session", backend=backend)
 
         expected = [
-            ForwardInfo(name="L:3000:localhost:3000", direction="L", spec="3000:localhost:3000", status="-", command="ssh"),
+            ForwardInfo(
+                name="L:3000:localhost:3000",
+                direction="L",
+                spec="3000:localhost:3000",
+                status="-",
+                command="ssh",
+            ),
         ]
         assert result == expected
-        mock_list_windows.assert_called_once_with("custom-session")
+        backend.list_tunnels.assert_called_once_with("custom-session")
 
-    def test_list_forwards_filters_non_forward_windows(self, mocker):
-        mock_list_windows = mocker.patch("portmux.forwards.list_windows")
-        mock_list_windows.return_value = [
-            {"name": "bash-window", "status": "-", "command": "bash"},
-            {"name": "X:invalid", "status": "-", "command": "ssh"},  # Invalid direction
-            {"name": "no-colon", "status": "-", "command": "ssh"},  # No colon
+    def test_list_forwards_filters_non_forward_windows(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = [
+            TunnelInfo(name="bash-window", status="-", command="bash"),
+            TunnelInfo(name="X:invalid", status="-", command="ssh"),
+            TunnelInfo(name="no-colon", status="-", command="ssh"),
         ]
 
-        result = list_forwards()
+        result = list_forwards(backend=backend)
 
         assert result == []
 
 
 class TestRefreshForward:
-    def test_refresh_forward_success(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = [
-            ForwardInfo(
-                name="L:8080:localhost:80",
-                direction="L",
-                spec="8080:localhost:80",
-                status="-",
-                command="ssh -N -L 8080:localhost:80 user@host",
-            )
+    def _make_backend_with_forward(
+        self, command="ssh -N -L 8080:localhost:80 user@host"
+    ):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = [
+            TunnelInfo(name="L:8080:localhost:80", status="-", command=command)
         ]
-        mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
-        mock_remove_forward.return_value = True
-        mock_add_forward = mocker.patch("portmux.forwards.add_forward")
-        mock_add_forward.return_value = "L:8080:localhost:80"
+        backend.kill_tunnel.return_value = True
+        backend.tunnel_exists.return_value = False
+        backend.create_tunnel.return_value = True
+        return backend
 
-        result = refresh_forward("L:8080:localhost:80")
+    def test_refresh_forward_success(self):
+        backend = self._make_backend_with_forward()
+
+        result = refresh_forward("L:8080:localhost:80", backend=backend)
 
         assert result is True
-        mock_list_forwards.assert_called_once_with("portmux")
-        mock_remove_forward.assert_called_once_with("L:8080:localhost:80", "portmux")
-        mock_add_forward.assert_called_once_with(
-            "L", "8080:localhost:80", "user@host", None, "portmux"
+        backend.kill_tunnel.assert_called_once_with("L:8080:localhost:80", "portmux")
+        backend.create_tunnel.assert_called_once_with(
+            "L:8080:localhost:80", "ssh -N -L 8080:localhost:80 user@host", "portmux"
         )
 
-    def test_refresh_forward_with_identity(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = [
-            ForwardInfo(
-                name="L:8080:localhost:80",
-                direction="L",
-                spec="8080:localhost:80",
-                status="-",
-                command="ssh -N -L 8080:localhost:80 -i /path/to/key user@host",
-            )
-        ]
-        mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
-        mock_remove_forward.return_value = True
-        mock_add_forward = mocker.patch("portmux.forwards.add_forward")
-        mock_add_forward.return_value = "L:8080:localhost:80"
+    def test_refresh_forward_with_identity(self):
+        backend = self._make_backend_with_forward(
+            command="ssh -N -L 8080:localhost:80 -i /path/to/key user@host"
+        )
 
-        result = refresh_forward("L:8080:localhost:80")
+        result = refresh_forward("L:8080:localhost:80", backend=backend)
 
         assert result is True
-        mock_add_forward.assert_called_once_with(
-            "L", "8080:localhost:80", "user@host", "/path/to/key", "portmux"
+        backend.create_tunnel.assert_called_once_with(
+            "L:8080:localhost:80",
+            "ssh -N -L 8080:localhost:80 -i /path/to/key user@host",
+            "portmux",
         )
 
-    def test_refresh_forward_not_found(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = []
+    def test_refresh_forward_not_found(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = []
 
         with pytest.raises(SSHError, match="Forward 'L:8080:localhost:80' not found"):
-            refresh_forward("L:8080:localhost:80")
+            refresh_forward("L:8080:localhost:80", backend=backend)
 
-    def test_refresh_forward_invalid_command(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = [
-            ForwardInfo(
-                name="L:8080:localhost:80",
-                direction="L",
-                spec="8080:localhost:80",
-                status="-",
-                command="bash",
-            )
+    def test_refresh_forward_invalid_command(self):
+        backend = Mock(spec=TmuxBackend)
+        backend.list_tunnels.return_value = [
+            TunnelInfo(name="L:8080:localhost:80", status="-", command="bash")
         ]
 
         with pytest.raises(
             SSHError, match="Cannot parse SSH command for forward 'L:8080:localhost:80'"
         ):
-            refresh_forward("L:8080:localhost:80")
+            refresh_forward("L:8080:localhost:80", backend=backend)
 
-    def test_refresh_forward_custom_session(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = [
-            ForwardInfo(
-                name="L:8080:localhost:80",
-                direction="L",
-                spec="8080:localhost:80",
-                status="-",
-                command="ssh -N -L 8080:localhost:80 user@host",
-            )
-        ]
-        mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
-        mock_remove_forward.return_value = True
-        mock_add_forward = mocker.patch("portmux.forwards.add_forward")
-        mock_add_forward.return_value = "L:8080:localhost:80"
+    def test_refresh_forward_custom_session(self):
+        backend = self._make_backend_with_forward()
 
-        result = refresh_forward("L:8080:localhost:80", "custom-session")
+        result = refresh_forward(
+            "L:8080:localhost:80", "custom-session", backend=backend
+        )
 
         assert result is True
-        mock_list_forwards.assert_called_once_with("custom-session")
-        mock_remove_forward.assert_called_once_with(
+        backend.list_tunnels.assert_called_once_with("custom-session")
+        backend.kill_tunnel.assert_called_once_with(
             "L:8080:localhost:80", "custom-session"
         )
-        mock_add_forward.assert_called_once_with(
-            "L", "8080:localhost:80", "user@host", None, "custom-session"
+        backend.create_tunnel.assert_called_once_with(
+            "L:8080:localhost:80",
+            "ssh -N -L 8080:localhost:80 user@host",
+            "custom-session",
         )
 
-    def test_refresh_forward_add_fails(self, mocker):
-        mock_list_forwards = mocker.patch("portmux.forwards.list_forwards")
-        mock_list_forwards.return_value = [
-            ForwardInfo(
-                name="L:8080:localhost:80",
-                direction="L",
-                spec="8080:localhost:80",
-                status="-",
-                command="ssh -N -L 8080:localhost:80 user@host",
-            )
-        ]
-        mock_remove_forward = mocker.patch("portmux.forwards.remove_forward")
-        mock_remove_forward.return_value = True
-        mock_add_forward = mocker.patch("portmux.forwards.add_forward")
-        mock_add_forward.side_effect = SSHError("Failed to add")
+    def test_refresh_forward_add_fails(self):
+        backend = self._make_backend_with_forward()
+        backend.create_tunnel.side_effect = SSHError("Failed to add")
 
         with pytest.raises(SSHError, match="Failed to add"):
-            refresh_forward("L:8080:localhost:80")
+            refresh_forward("L:8080:localhost:80", backend=backend)

@@ -14,10 +14,12 @@ class TestListCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
     @patch("portmux.commands.list.load_config")
-    def test_list_active_forwards(self, mock_load_config, mock_list_forwards, mock_session_exists):
+    def test_list_active_forwards(
+        self, mock_load_config, mock_list_forwards, mock_session_exists
+    ):
         mock_session_exists.return_value = True
         mock_load_config.return_value = PortmuxConfig()
         mock_list_forwards.return_value = [
@@ -31,47 +33,72 @@ class TestListCommand:
         ]
 
         result = self.runner.invoke(
-            list_cmd, [], obj={"session": "portmux", "config": None, "verbose": False, "output": Output()}
+            list_cmd,
+            [],
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "L:8080:localhost:80" in result.output
         assert "1 forward(s) active" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
     @patch("portmux.commands.list.load_config")
-    def test_list_no_forwards(self, mock_load_config, mock_list_forwards, mock_session_exists):
+    def test_list_no_forwards(
+        self, mock_load_config, mock_list_forwards, mock_session_exists
+    ):
         mock_session_exists.return_value = True
         mock_load_config.return_value = PortmuxConfig()
         mock_list_forwards.return_value = []
 
         result = self.runner.invoke(
-            list_cmd, [], obj={"session": "portmux", "config": None, "verbose": False, "output": Output()}
+            list_cmd,
+            [],
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "No active forwards" in result.output
         assert "portmux add" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.commands.list.load_config")
     def test_list_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
         mock_load_config.return_value = PortmuxConfig()
 
         result = self.runner.invoke(
-            list_cmd, [], obj={"session": "portmux", "config": None, "verbose": False, "output": Output()}
+            list_cmd,
+            [],
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "not active" in result.output
         assert "portmux init" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
     @patch("portmux.commands.list.load_config")
-    def test_list_json_output(self, mock_load_config, mock_list_forwards, mock_session_exists):
+    def test_list_json_output(
+        self, mock_load_config, mock_list_forwards, mock_session_exists
+    ):
         mock_session_exists.return_value = True
         mock_load_config.return_value = PortmuxConfig()
         mock_list_forwards.return_value = [
@@ -87,7 +114,12 @@ class TestListCommand:
         result = self.runner.invoke(
             list_cmd,
             ["--json"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
@@ -99,7 +131,7 @@ class TestListCommand:
         assert len(output_data["forwards"]) == 1
         assert output_data["forwards"][0]["name"] == "L:8080:localhost:80"
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.commands.list.load_config")
     def test_list_json_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -108,7 +140,12 @@ class TestListCommand:
         result = self.runner.invoke(
             list_cmd,
             ["--json"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0

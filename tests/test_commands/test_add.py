@@ -14,13 +14,18 @@ class TestAddCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.service.session_exists")
-    @patch("portmux.service.create_session")
+    @patch("portmux.session.session_exists")
+    @patch("portmux.session.create_session")
     @patch("portmux.service._add_forward")
     @patch("portmux.commands.add.load_config")
     @patch("portmux.service.get_default_identity")
     def test_add_local_forward_success(
-        self, mock_get_identity, mock_load_config, mock_add_forward, mock_create_session, mock_session_exists
+        self,
+        mock_get_identity,
+        mock_load_config,
+        mock_add_forward,
+        mock_create_session,
+        mock_session_exists,
     ):
         mock_load_config.return_value = PortmuxConfig(default_identity=None)
         mock_get_identity.return_value = "/home/user/.ssh/id_rsa"
@@ -30,20 +35,25 @@ class TestAddCommand:
         result = self.runner.invoke(
             add,
             ["L", "8080:localhost:80", "user@host"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "Successfully created local forward" in result.output
-        mock_add_forward.assert_called_once_with(
-            direction="L",
-            spec="8080:localhost:80",
-            host="user@host",
-            identity="/home/user/.ssh/id_rsa",
-            session_name="portmux",
-        )
+        mock_add_forward.assert_called_once()
+        call_kwargs = mock_add_forward.call_args.kwargs
+        assert call_kwargs["direction"] == "L"
+        assert call_kwargs["spec"] == "8080:localhost:80"
+        assert call_kwargs["host"] == "user@host"
+        assert call_kwargs["identity"] == "/home/user/.ssh/id_rsa"
+        assert call_kwargs["session_name"] == "portmux"
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._add_forward")
     @patch("portmux.commands.add.load_config")
     def test_add_remote_forward_with_identity(
@@ -56,26 +66,36 @@ class TestAddCommand:
         result = self.runner.invoke(
             add,
             ["R", "9000:localhost:9000", "user@host", "-i", "/path/to/key"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         if result.exit_code != 0:
             print(f"Error output: {result.output}")
         assert result.exit_code == 0
         assert "Successfully created remote forward" in result.output
-        mock_add_forward.assert_called_once_with(
-            direction="R",
-            spec="9000:localhost:9000",
-            host="user@host",
-            identity="/path/to/key",
-            session_name="portmux",
-        )
+        mock_add_forward.assert_called_once()
+        call_kwargs = mock_add_forward.call_args.kwargs
+        assert call_kwargs["direction"] == "R"
+        assert call_kwargs["spec"] == "9000:localhost:9000"
+        assert call_kwargs["host"] == "user@host"
+        assert call_kwargs["identity"] == "/path/to/key"
+        assert call_kwargs["session_name"] == "portmux"
 
     def test_add_invalid_direction(self):
         result = self.runner.invoke(
             add,
             ["X", "8080:localhost:80", "user@host"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code != 0
@@ -85,13 +105,18 @@ class TestAddCommand:
         result = self.runner.invoke(
             add,
             ["L", "invalid-spec", "user@host"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code != 0
         assert "Invalid port specification" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._add_forward")
     @patch("portmux.commands.add.load_config")
     def test_add_forward_already_exists(
@@ -106,13 +131,18 @@ class TestAddCommand:
         result = self.runner.invoke(
             add,
             ["L", "8080:localhost:80", "user@host"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code != 0
         assert "already exists" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._add_forward")
     @patch("portmux.commands.add.load_config")
     @patch("portmux.service.get_default_identity")
@@ -127,7 +157,12 @@ class TestAddCommand:
         result = self.runner.invoke(
             add,
             ["L", "8080:localhost:80", "user@host"],
-            obj={"session": "portmux", "config": None, "verbose": True, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": True,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0

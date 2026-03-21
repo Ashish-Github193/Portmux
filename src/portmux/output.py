@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -46,3 +49,36 @@ class Output:
 
     def panel(self, content: str, **kwargs) -> None:
         self.console.print(Panel(content, **kwargs))
+
+    @contextmanager
+    def progress_context(self) -> Generator[ProgressReporter, None, None]:
+        """Context manager for progress reporting with a spinner."""
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=self.console,
+            transient=True,
+        ) as progress:
+            yield ProgressReporter(progress)
+
+
+class ProgressReporter:
+    """Wraps Rich Progress to provide a simple update/finish API."""
+
+    def __init__(self, progress):
+        self._progress = progress
+        self._current_task = None
+
+    def update(self, description: str) -> None:
+        """Start or replace the current progress task."""
+        if self._current_task is not None:
+            self._progress.remove_task(self._current_task)
+        self._current_task = self._progress.add_task(description, total=None)
+
+    def finish(self) -> None:
+        """Remove the current progress task."""
+        if self._current_task is not None:
+            self._progress.remove_task(self._current_task)
+            self._current_task = None

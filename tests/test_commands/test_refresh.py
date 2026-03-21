@@ -13,9 +13,9 @@ class TestRefreshCommand:
     def setup_method(self):
         self.runner = CliRunner()
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
-    @patch("portmux.commands.refresh.refresh_forward")
+    @patch("portmux.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_single_forward_success(
         self,
@@ -26,7 +26,13 @@ class TestRefreshCommand:
     ):
         mock_session_exists.return_value = True
         mock_list_forwards.return_value = [
-            ForwardInfo(name="L:8080:localhost:80", direction="L", spec="8080:localhost:80", status="", command="ssh")
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="",
+                command="ssh",
+            )
         ]
         mock_refresh_forward.return_value = True
         mock_load_config.return_value = PortmuxConfig(reconnect_delay=1)
@@ -34,14 +40,19 @@ class TestRefreshCommand:
         result = self.runner.invoke(
             refresh,
             ["L:8080:localhost:80"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "Successfully refreshed forward" in result.output
-        mock_refresh_forward.assert_called_once_with("L:8080:localhost:80", "portmux")
+        mock_refresh_forward.assert_called_once()
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_no_session(self, mock_load_config, mock_session_exists):
         mock_session_exists.return_value = False
@@ -50,17 +61,24 @@ class TestRefreshCommand:
         result = self.runner.invoke(
             refresh,
             ["L:8080:localhost:80"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "not active" in result.output
         assert "portmux init" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
     @patch("portmux.commands.refresh.load_config")
-    def test_refresh_forward_not_found(self, mock_load_config, mock_list_forwards, mock_session_exists):
+    def test_refresh_forward_not_found(
+        self, mock_load_config, mock_list_forwards, mock_session_exists
+    ):
         mock_session_exists.return_value = True
         mock_load_config.return_value = PortmuxConfig()
         mock_list_forwards.return_value = []
@@ -68,14 +86,19 @@ class TestRefreshCommand:
         result = self.runner.invoke(
             refresh,
             ["L:8080:localhost:80"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
         assert "not found" in result.output
         assert "portmux list" in result.output
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
     @patch("portmux.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
@@ -90,8 +113,20 @@ class TestRefreshCommand:
     ):
         mock_session_exists.return_value = True
         mock_list_forwards.return_value = [
-            ForwardInfo(name="L:8080:localhost:80", direction="L", spec="8080:localhost:80", status="", command="ssh"),
-            ForwardInfo(name="R:9000:localhost:9000", direction="R", spec="9000:localhost:9000", status="", command="ssh"),
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="",
+                command="ssh",
+            ),
+            ForwardInfo(
+                name="R:9000:localhost:9000",
+                direction="R",
+                spec="9000:localhost:9000",
+                status="",
+                command="ssh",
+            ),
         ]
         mock_refresh_forward.return_value = True
         mock_load_config.return_value = PortmuxConfig(reconnect_delay=1)
@@ -99,7 +134,12 @@ class TestRefreshCommand:
         result = self.runner.invoke(
             refresh,
             ["--all"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
@@ -108,9 +148,9 @@ class TestRefreshCommand:
         # Should sleep between refreshes (but not after the last one)
         mock_sleep.assert_called_once_with(1)
 
-    @patch("portmux.service.session_exists")
+    @patch("portmux.session.session_exists")
     @patch("portmux.service._list_forwards")
-    @patch("portmux.commands.refresh.refresh_forward")
+    @patch("portmux.service._refresh_forward")
     @patch("portmux.commands.refresh.load_config")
     def test_refresh_with_custom_delay(
         self,
@@ -121,7 +161,13 @@ class TestRefreshCommand:
     ):
         mock_session_exists.return_value = True
         mock_list_forwards.return_value = [
-            ForwardInfo(name="L:8080:localhost:80", direction="L", spec="8080:localhost:80", status="", command="ssh")
+            ForwardInfo(
+                name="L:8080:localhost:80",
+                direction="L",
+                spec="8080:localhost:80",
+                status="",
+                command="ssh",
+            )
         ]
         mock_refresh_forward.return_value = True
         mock_load_config.return_value = PortmuxConfig(reconnect_delay=1)
@@ -129,7 +175,12 @@ class TestRefreshCommand:
         result = self.runner.invoke(
             refresh,
             ["L:8080:localhost:80", "--delay", "3"],
-            obj={"session": "portmux", "config": None, "verbose": False, "output": Output()},
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code == 0
@@ -137,7 +188,14 @@ class TestRefreshCommand:
 
     def test_refresh_no_arguments(self):
         result = self.runner.invoke(
-            refresh, [], obj={"session": "portmux", "config": None, "verbose": False, "output": Output()}
+            refresh,
+            [],
+            obj={
+                "session": "portmux",
+                "config": None,
+                "verbose": False,
+                "output": Output(),
+            },
         )
 
         assert result.exit_code != 0

@@ -6,9 +6,12 @@ import click
 import pytest
 
 from portmux.models import ForwardInfo
-from portmux.utils import (confirm_destructive_action, create_forwards_table,
-                           init_session_if_needed, validate_direction,
-                           validate_port_spec)
+from portmux.utils import (
+    confirm_destructive_action,
+    create_forwards_table,
+    validate_direction,
+    validate_port_spec,
+)
 
 
 class TestValidateDirection:
@@ -44,29 +47,6 @@ class TestValidatePortSpec:
 
         with pytest.raises(click.BadParameter):
             validate_port_spec("999999:localhost:80")  # Invalid port number
-
-
-class TestInitSessionIfNeeded:
-    @patch("portmux.utils.session_exists")
-    @patch("portmux.utils.create_session")
-    def test_session_already_exists(self, mock_create, mock_exists):
-        mock_exists.return_value = True
-
-        result = init_session_if_needed("test-session")
-
-        assert result is True
-        mock_create.assert_not_called()
-
-    @patch("portmux.utils.session_exists")
-    @patch("portmux.utils.create_session")
-    def test_session_created_successfully(self, mock_create, mock_exists):
-        mock_exists.return_value = False
-        mock_create.return_value = True
-
-        result = init_session_if_needed("test-session")
-
-        assert result is True
-        mock_create.assert_called_once_with("test-session")
 
 
 class TestCreateForwardsTable:

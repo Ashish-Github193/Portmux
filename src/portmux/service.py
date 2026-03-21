@@ -3,28 +3,28 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
 
-from rich.progress import Progress, SpinnerColumn, TextColumn
-
+from .backend import TunnelBackend
 from .config import (
-    create_default_config,
-    get_config_path,
     get_default_identity,
-    load_config,
 )
-from .exceptions import PortMuxError
 from .forwards import (
     add_forward as _add_forward,
+)
+from .forwards import (
     list_forwards as _list_forwards,
+)
+from .forwards import (
     refresh_forward as _refresh_forward,
+)
+from .forwards import (
     remove_forward as _remove_forward,
 )
 from .models import ForwardInfo, PortmuxConfig
 from .output import Output
 from .profiles import list_available_profiles, load_profile, profile_exists
-from .session import create_session, kill_session, session_exists
 from .startup import execute_startup_commands, startup_commands_enabled
+from .tmux_backend import TmuxBackend
 
 
 class PortmuxService:
@@ -34,10 +34,17 @@ class PortmuxService:
     New features (health checks, hooks, event logging) get added here.
     """
 
-    def __init__(self, config: PortmuxConfig, output: Output, session_name: str | None = None):
+    def __init__(
+        self,
+        config: PortmuxConfig,
+        output: Output,
+        session_name: str | None = None,
+        backend: TunnelBackend | None = None,
+    ):
         self.config = config
         self.output = output
         self.session_name = session_name or config.session_name
+        self.backend = backend or TmuxBackend()
 
     def initialize(
         self,
@@ -75,10 +82,12 @@ class PortmuxService:
             self.output.success(f"Profile '{profile}' loaded")
 
         # Check if session exists
-        if session_exists(self.session_name):
+        if self.backend.session_exists(self.session_name):
             if force:
-                self.output.warning(f"Destroying existing session '{self.session_name}'...")
-                kill_session(self.session_name)
+                self.output.warning(
+                    f"Destroying existing session '{self.session_name}'..."
+                )
+                self.backend.kill_session(self.session_name)
             else:
                 self.output.warning(f"Session '{self.session_name}' already exists")
                 self.output.print("Use --force to recreate the session")
@@ -87,7 +96,7 @@ class PortmuxService:
         # Create session
         self.output.verbose(f"Creating tmux session '{self.session_name}'...", verbose)
 
-        success = create_session(self.session_name)
+        success = self.backend.create_session(self.session_name)
         if success:
             self.output.success(
                 f"Successfully initialized PortMUX session '{self.session_name}'"
@@ -105,7 +114,9 @@ class PortmuxService:
                 if startup_success:
                     self.output.success("Startup commands completed successfully")
                 else:
-                    self.output.warning("Some startup commands failed (session still active)")
+                    self.output.warning(
+                        "Some startup commands failed (session still active)"
+                    )
             elif not run_startup:
                 self.output.verbose("Startup commands skipped (--no-startup)", verbose)
             elif verbose:
@@ -159,6 +170,7 @@ class PortmuxService:
             host=host,
             identity=identity,
             session_name=self.session_name,
+            backend=self.backend,
         )
 
         direction_name = "Local" if direction == "L" else "Remote"
@@ -179,7 +191,7 @@ class PortmuxService:
             True if removed
         """
         self.output.verbose(f"Removing forward '{name}'...", verbose)
-        _remove_forward(name, self.session_name)
+        _remove_forward(name, self.session_name, backend=self.backend)
         self.output.success(f"Successfully removed forward '{name}'")
         return True
 
@@ -194,13 +206,15 @@ class PortmuxService:
         """
         forwards = self.list_forwards()
         if not forwards:
-            self.output.warning(f"No forwards to remove in session '{self.session_name}'")
+            self.output.warning(
+                f"No forwards to remove in session '{self.session_name}'"
+            )
             return 0
 
         removed_count = 0
         for forward in forwards:
             try:
-                _remove_forward(forward.name, self.session_name)
+                _remove_forward(forward.name, self.session_name, backend=self.backend)
                 removed_count += 1
                 if verbose:
                     self.output.success(f"Removed forward '{forward.name}'")
@@ -220,7 +234,7 @@ class PortmuxService:
             True if destroyed
         """
         self.output.verbose(f"Destroying session '{self.session_name}'...", verbose)
-        kill_session(self.session_name)
+        self.backend.kill_session(self.session_name)
         self.output.success(f"Session '{self.session_name}' destroyed successfully")
         return True
 
@@ -230,7 +244,7 @@ class PortmuxService:
         Returns:
             List of ForwardInfo objects
         """
-        return _list_forwards(self.session_name)
+        return _list_forwards(self.session_name, backend=self.backend)
 
     def refresh_forward(self, name: str, verbose: bool = False) -> bool:
         """Refresh a single forward.
@@ -242,7 +256,7 @@ class PortmuxService:
         Returns:
             True if refreshed
         """
-        _refresh_forward(name, self.session_name)
+        _refresh_forward(name, self.session_name, backend=self.backend)
         if verbose:
             self.output.success(f"Refreshed forward '{name}'")
         return True
@@ -268,7 +282,9 @@ class PortmuxService:
 
         forwards = self.list_forwards()
         if not forwards:
-            self.output.warning(f"No forwards to refresh in session '{self.session_name}'")
+            self.output.warning(
+                f"No forwards to refresh in session '{self.session_name}'"
+            )
             return 0
 
         self.output.info(
@@ -276,21 +292,14 @@ class PortmuxService:
         )
 
         refreshed_count = 0
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.output.console,
-            transient=True,
-        ) as progress:
-
+        with self.output.progress_context() as progress:
             for i, forward in enumerate(forwards):
-                task = progress.add_task(
-                    f"Refreshing {forward.name} ({i+1}/{len(forwards)})",
-                    total=None,
-                )
+                progress.update(f"Refreshing {forward.name} ({i + 1}/{len(forwards)})")
 
                 try:
-                    _refresh_forward(forward.name, self.session_name)
+                    _refresh_forward(
+                        forward.name, self.session_name, backend=self.backend
+                    )
                     refreshed_count += 1
                     if verbose:
                         self.output.success(f"Refreshed forward '{forward.name}'")
@@ -302,7 +311,7 @@ class PortmuxService:
                 except Exception as e:
                     self.output.error(f"Failed to refresh '{forward.name}': {e}")
 
-                progress.remove_task(task)
+                progress.finish()
 
         self.output.success(
             f"Successfully refreshed {refreshed_count}/{len(forwards)} forward(s)"
@@ -310,7 +319,7 @@ class PortmuxService:
 
         # Handle startup reload
         if reload_startup:
-            self._handle_startup_reload(verbose)
+            self.handle_startup_reload(verbose)
 
         return refreshed_count
 
@@ -320,8 +329,10 @@ class PortmuxService:
         Returns:
             Dict with session_active and forwards
         """
-        active = session_exists(self.session_name)
-        forwards = _list_forwards(self.session_name) if active else []
+        active = self.backend.session_exists(self.session_name)
+        forwards = (
+            _list_forwards(self.session_name, backend=self.backend) if active else []
+        )
         return {
             "session_name": self.session_name,
             "session_active": active,
@@ -330,16 +341,16 @@ class PortmuxService:
 
     def session_is_active(self) -> bool:
         """Check if the tmux session is active."""
-        return session_exists(self.session_name)
+        return self.backend.session_exists(self.session_name)
 
     def _init_session_if_needed(self) -> None:
         """Create session if it doesn't exist."""
-        if not session_exists(self.session_name):
+        if not self.backend.session_exists(self.session_name):
             self.output.warning(f"Initializing session '{self.session_name}'...")
-            create_session(self.session_name)
+            self.backend.create_session(self.session_name)
             self.output.success(f"Session '{self.session_name}' created successfully")
 
-    def _handle_startup_reload(self, verbose: bool) -> None:
+    def handle_startup_reload(self, verbose: bool) -> None:
         """Handle startup command reload after refresh."""
         if startup_commands_enabled(self.config):
             self.output.verbose("Re-executing startup commands...", verbose)

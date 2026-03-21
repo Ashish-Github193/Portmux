@@ -5,7 +5,6 @@ from __future__ import annotations
 import click
 
 from ..config import load_config
-from ..forwards import refresh_forward
 from ..output import Output
 from ..service import PortmuxService
 from ..utils import handle_error
@@ -15,9 +14,13 @@ from ..utils import handle_error
 @click.argument("name", required=False)
 @click.option("--all", "refresh_all", is_flag=True, help="Refresh all forwards")
 @click.option("--delay", type=float, help="Delay between kill and recreate (seconds)")
-@click.option("--reload-startup", is_flag=True, help="Re-execute startup commands after refresh")
+@click.option(
+    "--reload-startup", is_flag=True, help="Re-execute startup commands after refresh"
+)
 @click.pass_context
-def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float, reload_startup: bool):
+def refresh(
+    ctx: click.Context, name: str, refresh_all: bool, delay: float, reload_startup: bool
+):
     """Refresh SSH port forwards by recreating them.
 
     NAME: Forward name to refresh (e.g., 'L:8080:localhost:80')
@@ -76,12 +79,12 @@ def refresh(ctx: click.Context, name: str, refresh_all: bool, delay: float, relo
         if verbose or (delay is not None and delay != config.reconnect_delay):
             output.info(f"Refreshing forward '{name}' with {effective_delay}s delay...")
 
-        refresh_forward(name, session_name)
+        svc.refresh_forward(name, verbose=verbose)
         output.success(f"Successfully refreshed forward '{name}'")
 
         # Handle startup reload for single forward
         if reload_startup:
-            svc._handle_startup_reload(verbose)
+            svc.handle_startup_reload(verbose)
 
     except click.UsageError:
         raise
