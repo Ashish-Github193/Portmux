@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, List
-
 import click
 from rich.table import Table
 
 from .exceptions import ConfigError, PortMuxError, SSHError, TmuxError
 from .models import ForwardInfo
 from .output import Output
-from .session import create_session, session_exists
 
 
 def handle_error(error: PortMuxError, output: Output | None = None) -> None:
@@ -35,31 +32,8 @@ def handle_error(error: PortMuxError, output: Output | None = None) -> None:
         output.error(f"Error: {error}")
 
 
-def init_session_if_needed(session_name: str, output: Output | None = None) -> bool:
-    """Initialize session if it doesn't exist.
-
-    Args:
-        session_name: Name of the tmux session
-        output: Output channel (creates default if None)
-
-    Returns:
-        True if session was created or already exists
-
-    Raises:
-        TmuxError: If session creation fails
-    """
-    if output is None:
-        output = Output()
-
-    if not session_exists(session_name):
-        output.warning(f"Initializing session '{session_name}'...")
-        create_session(session_name)
-        output.success(f"Session '{session_name}' created successfully")
-    return True
-
-
 def create_forwards_table(
-    forwards: List[ForwardInfo], include_status: bool = True
+    forwards: list[ForwardInfo], include_status: bool = True
 ) -> Table:
     """Create a Rich table for displaying forwards.
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from typing import List, Tuple
 
 from .exceptions import ConfigError, PortMuxError
 from .models import PortmuxConfig, StartupCommand
@@ -12,7 +11,9 @@ from .output import Output
 
 
 def execute_startup_commands(
-    config: PortmuxConfig, session_name: str, verbose: bool = False,
+    config: PortmuxConfig,
+    session_name: str,
+    verbose: bool = False,
     output: Output | None = None,
 ) -> bool:
     """Execute startup commands from configuration.
@@ -46,51 +47,42 @@ def execute_startup_commands(
 
     output.verbose(f"Executing {len(commands)} startup command(s)...", verbose)
 
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-
     success_count = 0
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=output.console,
-        transient=True,
-    ) as progress:
-
+    with output.progress_context() as progress:
         for i, command in enumerate(commands):
-            task = progress.add_task(
-                f"Executing command {i+1}/{len(commands)}: {command[:50]}...",
-                total=None,
+            progress.update(
+                f"Executing command {i + 1}/{len(commands)}: {command[:50]}..."
             )
 
             try:
-                success = execute_startup_command(command, session_name, verbose, output)
+                success = execute_startup_command(
+                    command, session_name, verbose, output
+                )
                 if success:
                     success_count += 1
                     if verbose:
-                        output.success(f"✓ Command {i+1} succeeded")
+                        output.success(f"✓ Command {i + 1} succeeded")
                 else:
-                    output.error(f"✗ Command {i+1} failed: {command}")
+                    output.error(f"✗ Command {i + 1} failed: {command}")
 
             except Exception as e:
-                output.error(f"✗ Command {i+1} error: {e}")
+                output.error(f"✗ Command {i + 1} error: {e}")
 
-            progress.remove_task(task)
+            progress.finish()
 
     # Report results
     if success_count == len(commands):
-        output.success(
-            f"All {len(commands)} startup commands executed successfully"
-        )
+        output.success(f"All {len(commands)} startup commands executed successfully")
         return True
     else:
-        output.warning(
-            f"{success_count}/{len(commands)} startup commands succeeded"
-        )
+        output.warning(f"{success_count}/{len(commands)} startup commands succeeded")
         return False
 
 
 def execute_startup_command(
-    command: str, session_name: str, verbose: bool = False,
+    command: str,
+    session_name: str,
+    verbose: bool = False,
     output: Output | None = None,
 ) -> bool:
     """Execute a single startup command.
@@ -206,7 +198,7 @@ def parse_startup_command(command: str) -> StartupCommand:
     )
 
 
-def validate_startup_commands(commands: List[str]) -> Tuple[bool, List[str]]:
+def validate_startup_commands(commands: list[str]) -> tuple[bool, list[str]]:
     """Validate a list of startup commands.
 
     Args:
@@ -221,12 +213,12 @@ def validate_startup_commands(commands: List[str]) -> Tuple[bool, List[str]]:
         try:
             parse_startup_command(command)
         except ConfigError as e:
-            errors.append(f"Command {i+1}: {e}")
+            errors.append(f"Command {i + 1}: {e}")
 
     return len(errors) == 0, errors
 
 
-def get_startup_command_preview(config: PortmuxConfig) -> List[str]:
+def get_startup_command_preview(config: PortmuxConfig) -> list[str]:
     """Get a preview of startup commands that would be executed.
 
     Args:

@@ -15,6 +15,15 @@ class ParsedSpec:
 
 
 @dataclass
+class TunnelInfo:
+    """Backend-neutral information about a running tunnel."""
+
+    name: str
+    status: str
+    command: str
+
+
+@dataclass
 class ForwardInfo:
     """Information about an active SSH forward."""
 

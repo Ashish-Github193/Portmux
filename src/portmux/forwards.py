@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional
 
+from .backend import TunnelBackend
 from .exceptions import SSHError, TmuxError
 from .models import ForwardInfo, ParsedSpec
-from .windows import create_window, kill_window, list_windows, window_exists
+from .tmux_backend import TmuxBackend
+
+
+def _default_backend() -> TunnelBackend:
+    return TmuxBackend()
 
 
 def parse_port_spec(spec: str) -> ParsedSpec:
@@ -52,10 +56,11 @@ def add_forward(
     direction: str,
     spec: str,
     host: str,
-    identity: Optional[str] = None,
+    identity: str | None = None,
     session_name: str = "portmux",
+    backend: TunnelBackend | None = None,
 ) -> str:
-    """Create SSH port forward in new tmux window.
+    """Create SSH port forward in a new tunnel.
 
     Args:
         direction: "L" for local, "R" for remote
@@ -63,6 +68,7 @@ def add_forward(
         host: SSH target like "user@hostname"
         identity: Path to SSH key file (optional)
         session_name: Name of the tmux session
+        backend: Tunnel backend to use (defaults to TmuxBackend)
 
     Returns:
         Window name created
@@ -71,6 +77,8 @@ def add_forward(
         SSHError: If direction is invalid or port spec is malformed
         TmuxError: If tmux operations fail
     """
+    backend = backend or _default_backend()
+
     if direction not in ("L", "R"):
         raise SSHError(
             f"Invalid direction '{direction}'. Must be 'L' (local) or 'R' (remote)"
@@ -82,14 +90,16 @@ def add_forward(
     # Create window name
     window_name = f"{direction}:{spec}"
 
-    # Check if window already exists
-    if window_exists(window_name, session_name):
+    # Check if tunnel already exists
+    if backend.tunnel_exists(window_name, session_name):
         raise SSHError(f"Forward '{window_name}' already exists")
 
     # Build SSH command
     ssh_args = ["ssh", "-N"]
 
-    port_spec_str = f"{parsed_spec.local_port}:{parsed_spec.remote_host}:{parsed_spec.remote_port}"
+    port_spec_str = (
+        f"{parsed_spec.local_port}:{parsed_spec.remote_host}:{parsed_spec.remote_port}"
+    )
 
     if direction == "L":
         ssh_args.extend(["-L", port_spec_str])
@@ -101,19 +111,24 @@ def add_forward(
 
     ssh_args.append(host)
 
-    # Create the window with SSH command
+    # Create the tunnel with SSH command
     ssh_command = " ".join(ssh_args)
-    create_window(window_name, ssh_command, session_name)
+    backend.create_tunnel(window_name, ssh_command, session_name)
 
     return window_name
 
 
-def remove_forward(name: str, session_name: str = "portmux") -> bool:
-    """Remove SSH forward by killing its tmux window.
+def remove_forward(
+    name: str,
+    session_name: str = "portmux",
+    backend: TunnelBackend | None = None,
+) -> bool:
+    """Remove SSH forward by killing its tunnel.
 
     Args:
         name: Window name (e.g., "L:8080:localhost:80")
         session_name: Name of the tmux session
+        backend: Tunnel backend to use (defaults to TmuxBackend)
 
     Returns:
         True if successful
@@ -121,14 +136,19 @@ def remove_forward(name: str, session_name: str = "portmux") -> bool:
     Raises:
         TmuxError: If tmux operations fail
     """
-    return kill_window(name, session_name)
+    backend = backend or _default_backend()
+    return backend.kill_tunnel(name, session_name)
 
 
-def list_forwards(session_name: str = "portmux") -> List[ForwardInfo]:
+def list_forwards(
+    session_name: str = "portmux",
+    backend: TunnelBackend | None = None,
+) -> list[ForwardInfo]:
     """List all active SSH forwards.
 
     Args:
         session_name: Name of the tmux session
+        backend: Tunnel backend to use (defaults to TmuxBackend)
 
     Returns:
         List of ForwardInfo objects
@@ -136,11 +156,12 @@ def list_forwards(session_name: str = "portmux") -> List[ForwardInfo]:
     Raises:
         TmuxError: If tmux operations fail
     """
-    windows = list_windows(session_name)
+    backend = backend or _default_backend()
+    tunnels = backend.list_tunnels(session_name)
     forwards = []
 
-    for window in windows:
-        name = window["name"]
+    for tunnel in tunnels:
+        name = tunnel.name
 
         # Parse window name to extract forward details
         if ":" in name and name[0] in ("L", "R"):
@@ -152,20 +173,25 @@ def list_forwards(session_name: str = "portmux") -> List[ForwardInfo]:
                     name=name,
                     direction=direction,
                     spec=spec,
-                    status=window["status"],
-                    command=window["command"],
+                    status=tunnel.status,
+                    command=tunnel.command,
                 )
             )
 
     return forwards
 
 
-def refresh_forward(name: str, session_name: str = "portmux") -> bool:
+def refresh_forward(
+    name: str,
+    session_name: str = "portmux",
+    backend: TunnelBackend | None = None,
+) -> bool:
     """Remove existing forward and recreate it with same parameters.
 
     Args:
         name: Window name (e.g., "L:8080:localhost:80")
         session_name: Name of the tmux session
+        backend: Tunnel backend to use (defaults to TmuxBackend)
 
     Returns:
         True if successful
@@ -174,8 +200,10 @@ def refresh_forward(name: str, session_name: str = "portmux") -> bool:
         SSHError: If forward doesn't exist or can't be parsed
         TmuxError: If tmux operations fail
     """
+    backend = backend or _default_backend()
+
     # Get the current forward details before removing it
-    forwards = list_forwards(session_name)
+    forwards = list_forwards(session_name, backend=backend)
     current_forward = None
 
     for forward in forwards:
@@ -202,14 +230,14 @@ def refresh_forward(name: str, session_name: str = "portmux") -> bool:
             identity = command_parts[identity_index + 1]
 
     # Remove the current forward
-    remove_forward(name, session_name)
+    remove_forward(name, session_name, backend=backend)
 
     # Recreate it
     direction = current_forward.direction
     spec = current_forward.spec
 
     try:
-        add_forward(direction, spec, host, identity, session_name)
+        add_forward(direction, spec, host, identity, session_name, backend=backend)
         return True
     except (SSHError, TmuxError):
         # If recreation fails, we've already removed the original
