@@ -59,7 +59,9 @@ src/portmux/
 │   ├── list.py          # portmux list [--json] [--status]
 │   ├── remove.py        # portmux remove NAME | --all | --destroy-session [-f]
 │   ├── refresh.py       # portmux refresh NAME | --all [--delay N] [--reload-startup]
-│   ├── status.py        # portmux status [--check-connections]
+│   ├── status.py        # portmux status — health table + monitor indicator + recent errors
+│   ├── watch.py         # portmux watch [--interval N] — foreground monitor, terminal only
+│   ├── monitor.py       # portmux monitor {start|stop|status} + hidden _monitor-daemon
 │   └── profile.py       # portmux profile {list|show NAME|active}
 │
 ├── core/                # Service layer — orchestration, config, output
@@ -77,9 +79,16 @@ src/portmux/
 ├── ssh/                 # Forward logic — SSH command building
 │   └── forwards.py      # add_forward, remove_forward, list_forwards, refresh_forward, parse_port_spec
 │
-└── tmux/                # Execution layer — raw tmux subprocess calls
+├── health/              # Health checking subsystem
+│   ├── __init__.py      # Re-exports HealthChecker, HealthLogger, TunnelMonitor, etc.
+│   ├── state.py         # TunnelHealth enum, HealthResult dataclass, transition rules
+│   ├── checker.py       # HealthChecker — async process/pane/TCP checks per tunnel
+│   ├── monitor.py       # TunnelMonitor — stateful check loop, auto-restart, heartbeat
+│   └── logger.py        # HealthLogger — buffered queue, flushes to ~/.portmux/health.log
+│
+└── tmux/                # Execution layer — raw tmux subprocess calls (via libtmux)
     ├── session.py       # create_session, session_exists, kill_session
-    └── windows.py       # create_window, kill_window, list_windows, window_exists
+    └── windows.py       # create_window, kill_window, list_windows, window_exists, get_window_diagnostics
 ```
 
 ## Data Models (models.py)
@@ -104,6 +113,24 @@ class ForwardInfo:
     spec: str                # "8080:localhost:80"
     status: str              # window status from tmux
     command: str             # full SSH command string
+    health: str | None = None  # TunnelHealth value or None if unchecked
+
+@dataclass
+class TunnelDiagnostics:
+    pane_pid: int | None
+    pane_current_command: str | None
+    pane_dead: bool
+    pane_dead_status: str | None
+    pane_content: list[str]
+
+@dataclass
+class HealthResult:
+    name: str
+    health: TunnelHealth       # HEALTHY, UNHEALTHY, DEAD, etc.
+    detail: str
+    process_alive: bool
+    port_open: bool | None     # None for remote forwards
+    pane_error: str | None
 
 @dataclass
 class StartupCommand:
@@ -123,6 +150,13 @@ class ProfileConfig:
     commands: list[str] = field(default_factory=list)
 
 @dataclass
+class MonitorConfig:
+    enabled: bool = True             # auto-start on portmux init
+    check_interval: float = 30.0     # seconds between checks
+    tcp_timeout: float = 2.0         # TCP probe timeout
+    auto_reconnect: bool = True      # auto-restart dead tunnels
+
+@dataclass
 class PortmuxConfig:
     session_name: str = "portmux"
     default_identity: str | None = None
@@ -131,6 +165,7 @@ class PortmuxConfig:
     startup: StartupConfig = field(default_factory=StartupConfig)
     profiles: dict[str, ProfileConfig] = field(default_factory=dict)
     active_profile: str | None = None
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
 ```
 
 ## Configuration (TOML)
@@ -159,6 +194,12 @@ commands = ["portmux add L 3000:localhost:3000 user@dev"]
 [profiles.production]
 session_name = "portmux-prod"
 commands = ["portmux add L 5432:prod-db:5432 user@bastion"]
+
+[monitor]
+enabled = true             # auto-start background monitor on portmux init
+check_interval = 30.0      # seconds between health checks
+tcp_timeout = 2.0          # TCP probe timeout
+auto_reconnect = true      # auto-restart dead tunnels
 ```
 
 Profile values override base config; unset values inherit from `[general]`.
@@ -183,7 +224,12 @@ not direct imports from `tmux/session.py`.
 
 Methods: `initialize()`, `add_forward()`, `remove_forward()`, `remove_all_forwards()`,
 `list_forwards()`, `refresh_forward()`, `refresh_all()`, `destroy_session()`,
-`get_status()`, `session_is_active()`, `handle_startup_reload()`
+`get_status()`, `session_is_active()`, `handle_startup_reload()`,
+`check_health()`, `create_monitor()`, `start_background_monitor()`
+
+`PortmuxService` creates its own `HealthLogger` in `__init__`. All mutation methods
+log events and flush immediately. `MONITOR_WINDOW = "_monitor"` is defined here
+and imported by `commands/monitor.py` and `commands/status.py`.
 
 ## Backend Protocol (backend/protocol.py)
 
@@ -206,7 +252,7 @@ and `tmux/windows.py`. Import via `from portmux.backend import TunnelBackend, Tm
 
 | Command | Description |
 |---------|-------------|
-| `portmux init` | Create tmux session, run startup commands |
+| `portmux init` | Create tmux session, run startup, start monitor |
 | `portmux init -p dev` | Initialize with profile |
 | `portmux add L 8080:localhost:80 user@host` | Add local forward |
 | `portmux add R 9000:localhost:9000 user@host -i key` | Add remote forward with identity |
@@ -217,7 +263,11 @@ and `tmux/windows.py`. Import via `from portmux.backend import TunnelBackend, Tm
 | `portmux remove --destroy-session -f` | Kill entire session |
 | `portmux refresh --all --delay 2` | Reconnect all with 2s delay |
 | `portmux refresh --all --reload-startup` | Refresh + re-run startup |
-| `portmux status` | Session and forwards overview |
+| `portmux status` | Health table + monitor status + recent errors |
+| `portmux watch` | Foreground health monitor (terminal only) |
+| `portmux monitor start` | Start background monitor daemon |
+| `portmux monitor stop` | Stop background monitor daemon |
+| `portmux monitor status` | Show monitor running state + config |
 | `portmux profile list` | Show configured profiles |
 | `portmux profile show dev` | Profile details |
 | `portmux profile active` | Currently active profile |
@@ -236,7 +286,7 @@ SSH commands generated:
 
 ## Testing
 
-217 tests across 16 files. Run with:
+332 tests across 20 files. Run with:
 
 ```bash
 uv run pytest              # all tests
@@ -244,9 +294,9 @@ uv run pytest -v           # verbose
 uv run pytest --cov=portmux  # with coverage
 ```
 
-### Test Patterns
+### Unit Tests
 
-All subprocess/tmux calls are mocked. No real tmux sessions needed for tests.
+All subprocess/tmux calls are mocked. No real tmux sessions needed for unit tests.
 
 **Execution layer tests** mock `subprocess.run` directly:
 ```python
@@ -293,6 +343,7 @@ Session mocks target `tmux/` modules (called through `TmuxBackend`):
 |------|:-----:|--------|
 | test_session.py | 14 | tmux/session create/exists/kill |
 | test_windows.py | 21 | tmux/window create/kill/list/exists |
+| test_window_diagnostics.py | — | get_window_diagnostics for health |
 | test_tmux_backend.py | 9 | TmuxBackend adapter delegation |
 | test_forwards.py | 30 | ssh/forwards add/remove/list/refresh/parse |
 | test_config.py | 8 | core/config load/save/validate |
@@ -300,17 +351,59 @@ Session mocks target `tmux/` modules (called through `TmuxBackend`):
 | test_profiles.py | 41 | core/profiles load/list/merge/validate |
 | test_utils.py | 9 | validation, tables, error handling |
 | test_cli.py | 2 | CLI entry point |
-| test_commands/*.py | 48 | all 7 command modules |
+| test_health_checker.py | — | HealthChecker process/pane/TCP checks |
+| test_health_monitor.py | — | TunnelMonitor state transitions, restart |
+| test_health_state.py | — | TunnelHealth enum, can_transition() |
+| test_health_logger.py | — | HealthLogger buffer/flush/read |
+| test_background_monitor.py | — | Monitor+logger, service logging, init/status integration |
+| test_commands/*.py | — | all command modules including monitor |
+
+### E2E Tests (planned)
+
+E2E tests run inside a Docker container with real tmux + sshd. No mocks.
+
+**Container setup:**
+- Base: `python:3.10-slim` with `tmux` and `openssh-server`
+- Passwordless SSH to localhost (ed25519 key, no passphrase)
+- portmux installed via `pip install -e ".[dev]"`
+- sshd started before test run
+
+**Structure:**
+```
+tests/e2e/
+├── Dockerfile               # Container with tmux + sshd + portmux
+├── conftest.py              # Fixtures: unique session names, cleanup
+├── test_session_lifecycle.py    # init, init --force, destroy
+├── test_forward_lifecycle.py    # add, list, remove, refresh with real SSH
+├── test_monitor_lifecycle.py    # monitor start/stop/status, health logging
+└── test_health_checks.py        # healthy/unhealthy/dead detection, auto-restart
+```
+
+**What e2e covers that unit tests can't:**
+- Real tmux session/window creation and cleanup
+- Real SSH tunnels (to localhost via sshd in container)
+- Health checks returning HEALTHY (TCP probe succeeds)
+- Monitor detecting dead tunnels when SSH process is killed
+- Auto-restart actually recreating tunnels
+- CLI flag ordering (e.g. `--session` before subcommand)
+- Health log file written and readable
+
+**Running:**
+```bash
+docker build -t portmux-e2e -f tests/e2e/Dockerfile .
+docker run --rm portmux-e2e
+```
 
 ## Dependencies
 
-**Runtime**: click>=8.1.0, rich>=14.1.0, toml>=0.10.2, colorama>=0.4.6
-**Dev**: pytest, pytest-mock, pytest-cov, black, isort, autoflake
+**Runtime**: click>=8.1.0, rich>=14.1.0, toml>=0.10.2, colorama>=0.4.6, libtmux
+**Dev**: pytest, pytest-mock, pytest-cov, ruff, bandit
 
 ## Code Style
 
-- **Formatter**: Black (88 char line length)
-- **Imports**: isort, grouped as stdlib → third-party → local
+- **Formatter/Linter**: ruff (88 char line length, replaces black/isort/autoflake)
+- **Security**: bandit (B404, B603, B607 excluded for subprocess usage)
+- **Imports**: ruff-managed, grouped as stdlib → third-party → local
 - **Type hints**: `from __future__ import annotations` everywhere; union types with `|`
 - **Naming**: snake_case functions/vars, PascalCase classes, UPPER_CASE constants
 - **Docstrings**: Google style (Args/Returns/Raises sections)
@@ -321,49 +414,35 @@ Session mocks target `tmux/` modules (called through `TmuxBackend`):
 - **Phase 1** (done): Core tmux/SSH infrastructure, session/window/forward management
 - **Phase 2** (done): Full CLI with Click, all commands, JSON output, test suite
 - **Phase 3** (done): Configuration system, profiles, startup automation
-- **Phase 4** (planned): TUI mode using Rich layouts — Output abstraction enables this
+- **Phase 4** (done): Async health check system — HealthChecker, TunnelMonitor, TunnelHealth state machine
+- **Phase 5** (done): Background monitor daemon + buffered health logging + service-level event logging
+- **Phase 6** (planned): E2E tests in Docker (real tmux + sshd), SSH agent awareness
+- **Phase 7** (planned): TUI mode using Rich layouts — Output abstraction enables this
 
 ## Missing Pieces & Known Gaps
 
-### 1. No Tunnel Health Verification (Critical)
-SSH forwards run in detached tmux windows. PortMUX has **zero visibility** into whether a
-tunnel is actually working. If the SSH key has a passphrase and isn't in the agent, SSH
-prompts for input inside the hidden tmux window — the tunnel silently never connects, but
-`portmux status` and `portmux list` both report it as "Running" because the tmux window
-exists and the `ssh` process is alive (just stuck on the prompt).
+### 1. ~~No Tunnel Health Verification~~ (Resolved)
+`HealthChecker` performs three concurrent checks per tunnel: process alive, pane output
+scan, TCP port probe. `portmux status` runs on-demand health checks. `portmux watch`
+provides continuous foreground monitoring. Background monitor daemon (`_monitor` window)
+runs persistent health checks with auto-restart.
 
-**Affected code:**
-- `utils.py:88-89` — status is hardcoded to `"Running"` based solely on window existence
-- `ForwardInfo.status` — always `""` from tmux, never reflects actual tunnel health
-- No TCP probe, no SSH exit code check, no port-open validation anywhere
+### 2. ~~Post-Add Connection Validation~~ (Resolved)
+`commands/add.py` performs TCP port probe after creating local forwards (skip with
+`--no-check`). Results logged to health log via `svc.logger`.
 
-### 2. Post-Add Connection Validation (Stub)
-`commands/add.py:67-70` — after creating a forward, the `--no-check` flag exists but
-the check itself is unimplemented. Every `portmux add` prints:
-```
-Note: Connection validation not implemented yet
-```
-The intended behavior: after creating the forward, TCP connect to `localhost:<local_port>`
-to verify the tunnel is actually passing traffic before reporting success.
-
-### 3. Status Connection Checking (Stub)
-`commands/status.py:14-17` — the `--check-connections` flag is declared but prints:
-```
-Connection checking not implemented yet
-```
-The intended behavior: for each active forward, probe the local port to confirm the
-tunnel is live, and report per-forward health (healthy/unhealthy/timeout).
+### 3. ~~Status Connection Checking~~ (Resolved)
+`commands/status.py` runs async health checks on all forwards, displays health column
+in table, shows monitor running state, and recent error events from health log.
 
 ### 4. List Status Column (Fake)
-`commands/list.py:18` — the `--status` flag is accepted but does nothing meaningful.
-`utils.py:88-89` always shows "Running" for every forward regardless of actual state.
-There's no mechanism to distinguish between a healthy tunnel, a stuck SSH prompt, a
-crashed connection, or a port that's bound but not forwarding.
+`commands/list.py:18-19` declares `--status` / `include_status` and passes it to
+`create_forwards_table()`, but list intentionally does not run health checks (fast path).
+Use `portmux status` for health-checked output.
 
-### 5. `max_retries` Config Field (Unused)
-`PortmuxConfig.max_retries` (default: 3) is loaded from config, validated, and stored —
-but never read by any operation. `refresh_forward()` does a single kill+recreate with no
-retry loop. `service.refresh_all()` catches exceptions per-forward but doesn't retry.
+### 5. ~~`max_retries` Config Field~~ (Resolved)
+`TunnelMonitor` uses `config.max_retries` to limit auto-restart attempts per tunnel.
+After exhausting retries, the tunnel is marked dead and abandoned.
 
 ### 6. No Passphrase / SSH Agent Awareness
 `config.py:get_default_identity()` checks if key files exist on disk but doesn't verify
@@ -371,11 +450,11 @@ they're usable (loaded in agent, passphrase-free, or agent-forwarded). A key wit
 passphrase that isn't in `ssh-agent` will cause a silent tunnel failure (see gap #1).
 There's no `ssh-add -l` check or `SSH_AUTH_SOCK` validation.
 
-### 7. No Forward Failure Detection or Auto-Restart
-When an SSH process inside a tmux window dies (network drop, server reboot, timeout),
-the tmux window closes silently. The forward disappears from `portmux list` with no
-notification. There's no watchdog, no monitoring loop, no event hook. The user must
-manually notice and run `portmux refresh`.
+### 7. ~~No Forward Failure Detection or Auto-Restart~~ (Resolved)
+`TunnelMonitor` detects dead and vanished tunnels. When `auto_reconnect` is enabled
+(default), dead tunnels are automatically restarted up to `max_retries` times.
+Background monitor daemon persists in `_monitor` tmux window, logging all events to
+`~/.portmux/health.log`. Vanished tunnels (window disappeared) also trigger restart.
 
 ### 8. ~~No Tunnel Backend Abstraction~~ (Resolved)
 `TunnelBackend` Protocol now abstracts tunnel lifecycle. `TmuxBackend` is the default
@@ -426,7 +505,11 @@ hardcoded "Running" value. The flag changes nothing visible.
 4. **Config returns dataclass**: `load_config()` returns `PortmuxConfig`, not a dict. Access with `.session_name` not `["session_name"]`
 5. **validate_config() takes raw dict**: It validates TOML dict structure before building `PortmuxConfig`
 6. **Startup command injection**: PortMUX startup commands get `--session` auto-injected if not present
-7. **Forward status field**: Always `""` currently — `status` column exists for future health checks
+7. **Group-level CLI flags**: `--session`, `--verbose`, `--config` are on the `main` Click group — they must come BEFORE the subcommand name (e.g., `portmux --session foo watch`, not `portmux watch --session foo`)
 8. **Click context obj**: Commands expect `{"session", "config", "verbose", "output"}` in `ctx.obj`
 9. **Profile inheritance**: `ProfileConfig` fields set to `None` inherit from base `PortmuxConfig`
 10. **Identity resolution order**: explicit `-i` flag → `config.default_identity` → auto-detected from `~/.ssh/`
+11. **MONITOR_WINDOW**: Defined in `core/service.py` as `"_monitor"`. Imported by `commands/monitor.py` and `commands/status.py` — don't redefine it
+12. **Foreground vs background watch**: `portmux watch` = terminal output only, no file logging. Background `_monitor-daemon` = file logging only. This prevents duplicate log entries
+13. **HealthLogger is buffered**: Events queue in memory. Call `flush()` at natural boundaries. Service methods flush after each operation. Monitor flushes after each check cycle
+14. **Init tests need window mocks**: Since `monitor.enabled=True` by default, `initialize()` calls `start_background_monitor()` which needs `tmux.windows.window_exists` and `tmux.windows.create_window` mocked
