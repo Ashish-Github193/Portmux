@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import time
 
-from ..backend import TunnelBackend, TmuxBackend
-from .config import (
-    get_default_identity,
-)
+from ..backend import TmuxBackend, TunnelBackend
+from ..models import ForwardInfo, PortmuxConfig
 from ..ssh.forwards import (
     add_forward as _add_forward,
 )
@@ -20,7 +18,9 @@ from ..ssh.forwards import (
 from ..ssh.forwards import (
     remove_forward as _remove_forward,
 )
-from ..models import ForwardInfo, PortmuxConfig
+from .config import (
+    get_default_identity,
+)
 from .output import Output
 from .profiles import list_available_profiles, load_profile, profile_exists
 from .startup import execute_startup_commands, startup_commands_enabled
@@ -348,6 +348,37 @@ class PortmuxService:
             self.output.warning(f"Initializing session '{self.session_name}'...")
             self.backend.create_session(self.session_name)
             self.output.success(f"Session '{self.session_name}' created successfully")
+
+    async def check_health(self) -> list:
+        """Run on-demand health check on all forwards.
+
+        Returns:
+            List of HealthResult objects
+        """
+        from ..health import HealthChecker
+
+        checker = HealthChecker(
+            self.backend,
+            self.session_name,
+            tcp_timeout=self.config.monitor.tcp_timeout,
+        )
+        forwards = self.list_forwards()
+        return await checker.check_all(forwards)
+
+    def create_monitor(self):
+        """Create a TunnelMonitor for continuous health watching.
+
+        Returns:
+            TunnelMonitor instance
+        """
+        from ..health import TunnelMonitor
+
+        return TunnelMonitor(
+            backend=self.backend,
+            config=self.config,
+            output=self.output,
+            session_name=self.session_name,
+        )
 
     def handle_startup_reload(self, verbose: bool) -> None:
         """Handle startup command reload after refresh."""

@@ -5,9 +5,9 @@ from __future__ import annotations
 import click
 from rich.table import Table
 
+from .core.output import Output
 from .exceptions import ConfigError, PortMuxError, SSHError, TmuxError
 from .models import ForwardInfo
-from .core.output import Output
 
 
 def handle_error(error: PortMuxError, output: Output | None = None) -> None:
@@ -53,14 +53,26 @@ def create_forwards_table(
     if include_status:
         table.add_column("Status", style="yellow", width=10)
 
+    _health_colors = {
+        "healthy": "green",
+        "unhealthy": "red",
+        "starting": "yellow",
+        "restarting": "yellow",
+        "dead": "red bold",
+        "unknown": "dim",
+    }
+
     for forward in forwards:
         direction_display = "Local" if forward.direction == "L" else "Remote"
 
         row = [forward.name, direction_display, forward.spec]
 
         if include_status:
-            # Simple status based on tmux window flags
-            status = "Running"
+            if forward.health:
+                color = _health_colors.get(forward.health, "dim")
+                status = f"[{color}]{forward.health.title()}[/{color}]"
+            else:
+                status = "[dim]\u2014[/dim]"
             row.append(status)
 
         table.add_row(*row)

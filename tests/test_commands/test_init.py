@@ -5,8 +5,8 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from portmux.commands.init import init
-from portmux.models import PortmuxConfig
 from portmux.core.output import Output
+from portmux.models import PortmuxConfig
 
 
 class TestInitCommand:

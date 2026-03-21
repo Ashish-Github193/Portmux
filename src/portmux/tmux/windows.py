@@ -6,6 +6,7 @@ import libtmux
 from libtmux.exc import LibTmuxException, TmuxCommandNotFound
 
 from ..exceptions import TmuxError
+from ..models import TunnelDiagnostics
 
 
 def _get_session(session_name: str) -> libtmux.Session | None:
@@ -130,3 +131,39 @@ def window_exists(name: str, session_name: str = "portmux") -> bool:
     if session is None:
         return False
     return session.windows.get(window_name=name, default=None) is not None
+
+
+def get_window_diagnostics(
+    name: str, session_name: str = "portmux"
+) -> TunnelDiagnostics | None:
+    """Capture diagnostic data from a window's active pane.
+
+    Args:
+        name: Name of the window to inspect
+        session_name: Name of the tmux session
+
+    Returns:
+        TunnelDiagnostics with pane state, or None if window not found
+    """
+    try:
+        session = _get_session(session_name)
+        if session is None:
+            return None
+        window = session.windows.get(window_name=name, default=None)
+        if window is None:
+            return None
+        pane = window.active_pane
+        if pane is None:
+            return None
+
+        return TunnelDiagnostics(
+            pane_pid=int(pane.pane_pid) if pane.pane_pid else None,
+            pane_current_command=pane.pane_current_command,
+            pane_dead=bool(pane.pane_dead_status),
+            pane_dead_status=pane.pane_dead_status,
+            pane_content=pane.capture_pane(start=-20),
+        )
+    except TmuxError:
+        raise
+    except LibTmuxException as e:
+        raise TmuxError(f"Failed to get diagnostics for window '{name}': {e}")

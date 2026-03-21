@@ -5,8 +5,6 @@ from unittest.mock import patch
 import pytest
 
 from portmux.core.config import DEFAULT_PROFILE_CONFIG
-from portmux.exceptions import ConfigError
-from portmux.models import PortmuxConfig, ProfileConfig, StartupConfig
 from portmux.core.profiles import (
     create_profile_template,
     get_active_profile,
@@ -18,6 +16,8 @@ from portmux.core.profiles import (
     profile_summary,
     validate_profile,
 )
+from portmux.exceptions import ConfigError
+from portmux.models import PortmuxConfig, ProfileConfig, StartupConfig
 
 
 def _config(**kwargs):

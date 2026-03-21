@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..backend import TunnelBackend, TmuxBackend
+from ..backend import TmuxBackend, TunnelBackend
 from ..exceptions import SSHError, TmuxError
 from ..models import ForwardInfo, ParsedSpec
 

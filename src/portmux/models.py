@@ -32,6 +32,18 @@ class ForwardInfo:
     spec: str
     status: str
     command: str
+    health: str | None = None  # TunnelHealth value or None if unchecked
+
+
+@dataclass
+class TunnelDiagnostics:
+    """Raw diagnostic data from the backend for a single tunnel."""
+
+    pane_pid: int | None
+    pane_current_command: str | None
+    pane_dead: bool
+    pane_dead_status: str | None
+    pane_content: list[str]
 
 
 @dataclass
@@ -61,6 +73,15 @@ class ProfileConfig:
 
 
 @dataclass
+class MonitorConfig:
+    """Monitor configuration."""
+
+    check_interval: float = 30.0
+    tcp_timeout: float = 2.0
+    auto_reconnect: bool = True
+
+
+@dataclass
 class PortmuxConfig:
     """Main PortMUX configuration."""
 
@@ -71,3 +92,4 @@ class PortmuxConfig:
     startup: StartupConfig = field(default_factory=StartupConfig)
     profiles: dict[str, ProfileConfig] = field(default_factory=dict)
     active_profile: str | None = None
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
