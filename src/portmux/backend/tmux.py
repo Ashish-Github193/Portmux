@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from ..models import TunnelDiagnostics, TunnelInfo
 from ..tmux import session as _session
 from ..tmux import windows as _windows
-from ..models import TunnelInfo
 
 
 class TmuxBackend:
@@ -34,3 +34,8 @@ class TmuxBackend:
             TunnelInfo(name=w["name"], status=w["status"], command=w["command"])
             for w in raw_windows
         ]
+
+    def get_tunnel_diagnostics(
+        self, name: str, session_name: str
+    ) -> TunnelDiagnostics | None:
+        return _windows.get_window_diagnostics(name, session_name)

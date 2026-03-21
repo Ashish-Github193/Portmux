@@ -5,8 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from portmux.exceptions import ConfigError, PortMuxError
-from portmux.models import PortmuxConfig, StartupConfig
 from portmux.core.startup import (
     execute_startup_command,
     execute_startup_commands,
@@ -15,6 +13,8 @@ from portmux.core.startup import (
     startup_commands_enabled,
     validate_startup_commands,
 )
+from portmux.exceptions import ConfigError, PortMuxError
+from portmux.models import PortmuxConfig, StartupConfig
 
 
 class TestParseStartupCommand:

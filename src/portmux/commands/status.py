@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import click
 
 from ..core.config import load_config
@@ -11,19 +13,14 @@ from ..utils import create_forwards_table, handle_error
 
 
 @click.command()
-@click.option(
-    "--check-connections",
-    is_flag=True,
-    help="Test forward connectivity (not implemented yet)",
-)
 @click.pass_context
-def status(ctx: click.Context, check_connections: bool):
+def status(ctx: click.Context):
     """Show PortMUX session status and active forwards.
 
-    Displays information about the tmux session and all active port forwards.
+    Displays information about the tmux session and all active port forwards
+    with health check results.
     """
     session_name = ctx.obj["session"]
-    ctx.obj["verbose"]
     output: Output = ctx.obj.get("output") or Output()
 
     try:
@@ -33,38 +30,26 @@ def status(ctx: click.Context, check_connections: bool):
         status_info = svc.get_status()
 
         if not status_info["session_active"]:
-            output.panel(
-                f"[red]Session '{session_name}' is not active[/red]\n"
-                f"[blue]Run 'portmux init' to create the session[/blue]",
-                title="PortMUX Status",
-                border_style="red",
-            )
+            output.error(f"Session '{session_name}' is not active")
+            output.info("Run 'portmux init' to create the session")
             return
 
-        # Display session info
         forwards = status_info["forwards"]
-        session_info = f"[green]Session '{session_name}' is active[/green]"
+
+        if not forwards:
+            output.warning("No active forwards")
+            output.info("Use 'portmux add' to create new forwards")
+            return
 
         if forwards:
-            session_info += f"\n[blue]{len(forwards)} active forward(s)[/blue]"
-        else:
-            session_info += "\n[yellow]No active forwards[/yellow]"
+            results = asyncio.run(svc.check_health())
+            health_map = {r.name: r for r in results}
+            for f in forwards:
+                result = health_map.get(f.name)
+                f.health = result.health.value if result else None
 
-        output.panel(session_info, title="PortMUX Status", border_style="green")
-
-        # Display forwards table if any exist
-        if forwards:
-            output.print("\n[bold]Active Forwards:[/bold]")
             table = create_forwards_table(forwards, include_status=True)
             output.table(table)
-
-            if check_connections:
-                output.print(
-                    "\n[yellow]Connection checking not implemented yet[/yellow]"
-                )
-        else:
-            output.print("\n[yellow]No forwards to display[/yellow]")
-            output.info("Use 'portmux add' to create new forwards")
 
     except Exception as e:
         handle_error(e, output)

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 import click
 
 from ..core.config import load_config
 from ..core.output import Output
 from ..core.service import PortmuxService
+from ..health import HealthChecker, TunnelHealth
+from ..models import ForwardInfo
 from ..utils import handle_error, validate_direction, validate_port_spec
 
 
@@ -56,7 +61,7 @@ def add(
         # Create service and delegate
         svc = PortmuxService(config, output, session_name)
 
-        svc.add_forward(
+        window_name = svc.add_forward(
             direction=direction,
             spec=spec,
             host=host,
@@ -64,8 +69,25 @@ def add(
             verbose=verbose,
         )
 
-        if not no_check:
-            output.warning("Note: Connection validation not implemented yet")
+        if not no_check and direction == "L":
+            time.sleep(1.5)  # Give the tunnel time to establish
+            checker = HealthChecker(
+                svc.backend, svc.session_name, tcp_timeout=config.monitor.tcp_timeout
+            )
+            forward = ForwardInfo(
+                name=window_name,
+                direction=direction,
+                spec=spec,
+                status="",
+                command="",
+            )
+            results = asyncio.run(checker.check_all([forward]))
+            if results and results[0].health == TunnelHealth.HEALTHY:
+                output.success("Connection verified")
+            elif results:
+                output.warning(f"Connection check: {results[0].detail}")
+            else:
+                output.warning("Could not verify connection")
 
     except Exception as e:
         handle_error(e, output)

@@ -5,9 +5,9 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from portmux.commands.add import add
+from portmux.core.output import Output
 from portmux.exceptions import SSHError
 from portmux.models import PortmuxConfig
-from portmux.core.output import Output
 
 
 class TestAddCommand:

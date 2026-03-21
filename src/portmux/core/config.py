@@ -7,7 +7,7 @@ from pathlib import Path
 import toml
 
 from ..exceptions import ConfigError
-from ..models import PortmuxConfig, ProfileConfig, StartupConfig
+from ..models import MonitorConfig, PortmuxConfig, ProfileConfig, StartupConfig
 
 DEFAULT_CONFIG = {
     "session_name": "portmux",
@@ -76,6 +76,7 @@ def load_config(config_path: str | None = None) -> PortmuxConfig:
             "general" in file_config
             or "startup" in file_config
             or "profiles" in file_config
+            or "monitor" in file_config
         ):
             # New structured format
             if "general" in file_config:
@@ -84,6 +85,8 @@ def load_config(config_path: str | None = None) -> PortmuxConfig:
                 config["startup"].update(file_config["startup"])
             if "profiles" in file_config:
                 config["profiles"].update(file_config["profiles"])
+            if "monitor" in file_config:
+                config["monitor"] = file_config["monitor"]
 
             # Also check for any root-level config for partial migration
             for key in DEFAULT_CONFIG.keys():
@@ -111,6 +114,7 @@ def _build_config(raw: dict) -> PortmuxConfig:
     general = raw.get("general", {})
     startup_raw = raw.get("startup", {})
     profiles_raw = raw.get("profiles", {})
+    health_raw = raw.get("monitor", {})
 
     profiles = {}
     for name, profile_data in profiles_raw.items():
@@ -130,6 +134,11 @@ def _build_config(raw: dict) -> PortmuxConfig:
             commands=list(startup_raw.get("commands", [])),
         ),
         profiles=profiles,
+        monitor=MonitorConfig(
+            check_interval=health_raw.get("check_interval", 30.0),
+            tcp_timeout=health_raw.get("tcp_timeout", 2.0),
+            auto_reconnect=health_raw.get("auto_reconnect", True),
+        ),
     )
 
 
@@ -180,6 +189,12 @@ def _config_to_toml_dict(config: PortmuxConfig) -> dict:
     toml_dict["startup"] = {
         "auto_execute": config.startup.auto_execute,
         "commands": config.startup.commands,
+    }
+
+    toml_dict["monitor"] = {
+        "check_interval": config.monitor.check_interval,
+        "tcp_timeout": config.monitor.tcp_timeout,
+        "auto_reconnect": config.monitor.auto_reconnect,
     }
 
     if config.profiles:
@@ -253,6 +268,10 @@ def validate_config(config: dict) -> bool:
 
     # Validate profiles configuration
     _validate_profiles_config(profiles_config)
+
+    # Validate monitor configuration
+    monitor_config = config.get("monitor", {})
+    _validate_monitor_config(monitor_config)
 
     return True
 
@@ -377,6 +396,26 @@ def _validate_profile(profile_name: str, profile_config: dict) -> bool:
             )
         if not command.strip():
             raise ConfigError(f"Profile '{profile_name}' commands[{i}] cannot be empty")
+
+    return True
+
+
+def _validate_monitor_config(config: dict) -> bool:
+    """Validate monitor configuration section."""
+    if not config:
+        return True  # Empty monitor config is valid, defaults apply
+
+    check_interval = config.get("check_interval", 30.0)
+    if not isinstance(check_interval, int | float) or check_interval <= 0:
+        raise ConfigError("'monitor.check_interval' must be a positive number")
+
+    tcp_timeout = config.get("tcp_timeout", 2.0)
+    if not isinstance(tcp_timeout, int | float) or tcp_timeout <= 0:
+        raise ConfigError("'monitor.tcp_timeout' must be a positive number")
+
+    auto_reconnect = config.get("auto_reconnect", True)
+    if not isinstance(auto_reconnect, bool):
+        raise ConfigError("'monitor.auto_reconnect' must be a boolean")
 
     return True
 

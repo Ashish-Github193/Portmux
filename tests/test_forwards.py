@@ -4,7 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
+from portmux.backend import TmuxBackend
 from portmux.exceptions import SSHError, TmuxError
+from portmux.models import ForwardInfo, ParsedSpec, TunnelInfo
 from portmux.ssh.forwards import (
     add_forward,
     list_forwards,
@@ -12,8 +14,6 @@ from portmux.ssh.forwards import (
     refresh_forward,
     remove_forward,
 )
-from portmux.models import ForwardInfo, ParsedSpec, TunnelInfo
-from portmux.backend import TmuxBackend
 
 
 class TestParsePortSpec:

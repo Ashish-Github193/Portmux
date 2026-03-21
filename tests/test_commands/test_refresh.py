@@ -5,8 +5,8 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from portmux.commands.refresh import refresh
-from portmux.models import ForwardInfo, PortmuxConfig
 from portmux.core.output import Output
+from portmux.models import ForwardInfo, PortmuxConfig
 
 
 class TestRefreshCommand:

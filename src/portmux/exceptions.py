@@ -15,3 +15,7 @@ class SSHError(PortMuxError):
 
 class ConfigError(PortMuxError):
     """Raised when configuration is invalid."""
+
+
+class HealthCheckError(PortMuxError):
+    """Raised when health check operations fail."""

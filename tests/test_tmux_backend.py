@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from portmux.backend import TunnelBackend, TmuxBackend
+from portmux.backend import TmuxBackend, TunnelBackend
 from portmux.models import TunnelInfo
 
 

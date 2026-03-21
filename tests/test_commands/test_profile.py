@@ -5,9 +5,9 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from portmux.commands.profile import profile
+from portmux.core.output import Output
 from portmux.exceptions import ConfigError
 from portmux.models import PortmuxConfig, ProfileConfig
-from portmux.core.output import Output
 
 
 class TestProfileListCommand:

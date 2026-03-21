@@ -6,8 +6,8 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from portmux.commands.list import list as list_cmd
-from portmux.models import ForwardInfo, PortmuxConfig
 from portmux.core.output import Output
+from portmux.models import ForwardInfo, PortmuxConfig
 
 
 class TestListCommand:
@@ -45,7 +45,6 @@ class TestListCommand:
 
         assert result.exit_code == 0
         assert "L:8080:localhost:80" in result.output
-        assert "1 forward(s) active" in result.output
 
     @patch("portmux.tmux.session.session_exists")
     @patch("portmux.core.service._list_forwards")

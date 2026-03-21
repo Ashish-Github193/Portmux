@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ..models import TunnelInfo
+from ..models import TunnelDiagnostics, TunnelInfo
 
 
 @runtime_checkable
@@ -28,3 +28,7 @@ class TunnelBackend(Protocol):
     def tunnel_exists(self, name: str, session_name: str) -> bool: ...
 
     def list_tunnels(self, session_name: str) -> list[TunnelInfo]: ...
+
+    def get_tunnel_diagnostics(
+        self, name: str, session_name: str
+    ) -> TunnelDiagnostics | None: ...

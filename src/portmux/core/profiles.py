@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from .config import DEFAULT_PROFILE_CONFIG
 from ..exceptions import ConfigError
 from ..models import PortmuxConfig, ProfileConfig, StartupConfig
+from .config import DEFAULT_PROFILE_CONFIG
 
 
 def load_profile(profile_name: str, config: PortmuxConfig) -> PortmuxConfig:

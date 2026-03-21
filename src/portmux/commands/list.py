@@ -14,15 +14,13 @@ from ..utils import create_forwards_table, handle_error
 
 @click.command()
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-@click.option(
-    "--status", "include_status", is_flag=True, help="Include connection status"
-)
 @click.pass_context
-def list(ctx: click.Context, output_json: bool, include_status: bool):
+def list(ctx: click.Context, output_json: bool):
     """List all active SSH port forwards.
 
-    Shows a table of all forwards with their direction, specification, and status.
+    Shows a table of all forwards with their direction and specification.
     Use --json for machine-readable output suitable for scripting.
+    Use 'portmux status' to see health check results.
     """
     session_name = ctx.obj["session"]
     verbose = ctx.obj["verbose"]
@@ -76,10 +74,8 @@ def list(ctx: click.Context, output_json: bool, include_status: bool):
                     f"Active forwards in session '{session_name}':\n", verbose
                 )
 
-                table = create_forwards_table(forwards, include_status=include_status)
+                table = create_forwards_table(forwards, include_status=False)
                 output.table(table)
-
-                output.success(f"\n{len(forwards)} forward(s) active")
 
     except Exception as e:
         handle_error(e, output)
