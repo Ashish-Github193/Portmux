@@ -71,6 +71,9 @@ class TestGetWindowDiagnostics:
         mock_session.windows.get.return_value = mock_window
         mocker.patch("portmux.tmux.windows._get_session", return_value=mock_session)
 
+        # Mock _is_pane_dead (tmux subprocess unavailable in unit tests)
+        mocker.patch("portmux.tmux.windows._is_pane_dead", return_value=True)
+
         result = get_window_diagnostics("L:8080:localhost:80", "portmux")
 
         assert result.pane_dead is True

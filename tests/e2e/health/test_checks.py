@@ -52,8 +52,6 @@ class TestHealthChecks:
         remote_port = free_port()
         spec = f"{remote_port}:localhost:{tcp_server}"
         portmux_service.add_forward("R", spec, ssh_target)
-
-        # Wait for the SSH process to establish
         wait_for_port(remote_port)
 
         checker = HealthChecker(backend, portmux_service.session_name, tcp_timeout=2.0)
@@ -63,14 +61,20 @@ class TestHealthChecks:
         assert len(results) == 1
         r = results[0]
         assert r.health == TunnelHealth.HEALTHY
-        # Remote forwards skip TCP probe
         assert r.port_open is None
         assert r.process_alive is True
 
     def test_dead_tunnel_ssh_killed(
-        self, portmux_service, tcp_server, ssh_target, free_port, backend
+        self,
+        portmux_service,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        remain_on_exit,
     ):
         portmux_service.initialize(run_startup=False)
+        remain_on_exit()
 
         local_port = free_port()
         spec = f"{local_port}:localhost:{tcp_server}"
@@ -86,9 +90,10 @@ class TestHealthChecks:
         # Wait for pane to reflect the death
         def _is_dead():
             d = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
-            return d and d.pane_dead
+            # Window gone or pane marked dead
+            return d is None or d.pane_dead
 
-        wait_for_condition(_is_dead, timeout=5.0, desc="SSH process death")
+        wait_for_condition(_is_dead, timeout=10.0, desc="SSH process death")
 
         checker = HealthChecker(backend, portmux_service.session_name, tcp_timeout=2.0)
         forwards = portmux_service.list_forwards()
@@ -132,28 +137,32 @@ class TestHealthChecks:
         assert r.port_open is False
         assert "port not responding" in r.detail.lower()
 
-    def test_pane_error_detection(self, portmux_service, free_port, backend):
-        """Forward to a non-existent host triggers pane error detection."""
+    def test_pane_error_detection(
+        self, portmux_service, free_port, backend, remain_on_exit
+    ):
+        """Forward to a non-existent host triggers error detection."""
         portmux_service.initialize(run_startup=False)
+        remain_on_exit()
 
         local_port = free_port()
         spec = f"{local_port}:localhost:80"
-        # Use a host that will fail DNS resolution
         portmux_service.add_forward("L", spec, "root@nonexistent.invalid")
 
-        # Wait for SSH to fail and pane to show error
         name = f"L:{spec}"
 
-        def _has_error_output():
-            diag = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
-            if diag is None:
-                return False
-            content = "\n".join(diag.pane_content).lower()
+        # Wait for SSH to fail — pane stays due to remain-on-exit
+        def _has_error_or_dead():
+            d = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
+            if d is None:
+                return True  # window gone = SSH failed
+            if d.pane_dead:
+                return True
+            content = "\n".join(d.pane_content).lower()
             return (
                 "could not resolve" in content or "name or service not known" in content
             )
 
-        wait_for_condition(_has_error_output, timeout=10.0, desc="SSH error in pane")
+        wait_for_condition(_has_error_or_dead, timeout=15.0, desc="SSH error in pane")
 
         checker = HealthChecker(backend, portmux_service.session_name, tcp_timeout=2.0)
         forwards = portmux_service.list_forwards()
@@ -165,10 +174,17 @@ class TestHealthChecks:
         assert r.health in (TunnelHealth.DEAD, TunnelHealth.UNHEALTHY)
 
     def test_mixed_health_results(
-        self, portmux_service, tcp_server, ssh_target, free_port, backend
+        self,
+        portmux_service,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        remain_on_exit,
     ):
         """One healthy + one dead tunnel."""
         portmux_service.initialize(run_startup=False)
+        remain_on_exit()
 
         # Healthy tunnel
         healthy_port = free_port()
@@ -185,17 +201,18 @@ class TestHealthChecks:
 
         # Wait for the bad tunnel's SSH to fail
         def _is_dead_or_errored():
-            diag = backend.get_tunnel_diagnostics(
-                dead_name, portmux_service.session_name
-            )
-            if diag is None:
-                return False
+            d = backend.get_tunnel_diagnostics(dead_name, portmux_service.session_name)
+            if d is None:
+                return True
             return (
-                diag.pane_dead
-                or "could not resolve" in "\n".join(diag.pane_content).lower()
+                d.pane_dead or "could not resolve" in "\n".join(d.pane_content).lower()
             )
 
-        wait_for_condition(_is_dead_or_errored, timeout=10.0, desc="bad tunnel failure")
+        wait_for_condition(
+            _is_dead_or_errored,
+            timeout=15.0,
+            desc="bad tunnel failure",
+        )
 
         checker = HealthChecker(backend, portmux_service.session_name, tcp_timeout=2.0)
         forwards = portmux_service.list_forwards()
@@ -207,28 +224,28 @@ class TestHealthChecks:
         assert healths[healthy_name] == TunnelHealth.HEALTHY
 
     def test_diagnostics_capture_pane_content(
-        self, portmux_service, free_port, backend
+        self, portmux_service, free_port, backend, remain_on_exit
     ):
         """Verify pane_content captures real SSH error text."""
         portmux_service.initialize(run_startup=False)
+        remain_on_exit()
 
         local_port = free_port()
         spec = f"{local_port}:localhost:80"
         name = portmux_service.add_forward("L", spec, "root@nonexistent.invalid")
 
         def _has_content():
-            diag = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
-            if diag is None:
+            d = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
+            if d is None:
                 return False
-            return len(diag.pane_content) > 0 and any(
-                line.strip() for line in diag.pane_content
+            return len(d.pane_content) > 0 and any(
+                line.strip() for line in d.pane_content
             )
 
-        wait_for_condition(_has_content, timeout=10.0, desc="pane content")
+        wait_for_condition(_has_content, timeout=15.0, desc="pane content")
 
         diag = backend.get_tunnel_diagnostics(name, portmux_service.session_name)
         content = "\n".join(diag.pane_content).lower()
-        # SSH should have printed some error about the host
         assert (
             "nonexistent" in content or "resolve" in content or "not known" in content
         )

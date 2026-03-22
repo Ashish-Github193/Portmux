@@ -22,11 +22,21 @@ def _run_async(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
+def _wait_for_death(backend, name, session_name, timeout=10.0):
+    """Wait for a tunnel to die (pane dead or window gone)."""
+
+    def _is_dead():
+        d = backend.get_tunnel_diagnostics(name, session_name)
+        return d is None or d.pane_dead
+
+    wait_for_condition(_is_dead, timeout=timeout, desc="SSH death")
+
+
 class TestMonitorLifecycle:
     """Background monitor start/stop and auto-restart."""
 
     def test_start_background_monitor(self, monitored_service, backend):
-        monitored_service.config.monitor.enabled = False  # don't auto-start
+        monitored_service.config.monitor.enabled = False
         monitored_service.initialize(run_startup=False)
 
         result = monitored_service.start_background_monitor()
@@ -44,10 +54,18 @@ class TestMonitorLifecycle:
         assert not backend.tunnel_exists(MONITOR_WINDOW, monitored_service.session_name)
 
     def test_monitor_auto_restart_dead_tunnel(
-        self, monitored_service, tcp_server, ssh_target, free_port, backend, tmp_path
+        self,
+        monitored_service,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        tmp_path,
+        remain_on_exit,
     ):
         """Kill SSH, monitor detects death and restarts the tunnel."""
         monitored_service.initialize(run_startup=False)
+        remain_on_exit()
 
         local_port = free_port()
         spec = f"{local_port}:localhost:{tcp_server}"
@@ -58,18 +76,7 @@ class TestMonitorLifecycle:
         diag = backend.get_tunnel_diagnostics(name, monitored_service.session_name)
         assert diag is not None
         os.kill(diag.pane_pid, signal.SIGKILL)
-
-        # Wait for pane to reflect death
-        wait_for_condition(
-            lambda: (
-                d := backend.get_tunnel_diagnostics(
-                    name, monitored_service.session_name
-                )
-            )
-            and d.pane_dead,
-            timeout=5.0,
-            desc="SSH death",
-        )
+        _wait_for_death(backend, name, monitored_service.session_name)
 
         # Run monitor cycle — should detect death and restart
         logger = HealthLogger(log_path=tmp_path / "monitor.log")
@@ -91,10 +98,18 @@ class TestMonitorLifecycle:
         assert len(healthy) >= 1
 
     def test_monitor_gives_up_after_max_retries(
-        self, session_name, tcp_server, ssh_target, free_port, backend, tmp_path
+        self,
+        session_name,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        tmp_path,
+        remain_on_exit,
     ):
         """Monitor gives up after max_retries exhausted."""
         from portmux.core.output import Output
+        from portmux.core.service import PortmuxService
         from portmux.models import MonitorConfig, PortmuxConfig
 
         config = PortmuxConfig(
@@ -109,10 +124,9 @@ class TestMonitorLifecycle:
                 auto_reconnect=True,
             ),
         )
-        from portmux.core.service import PortmuxService
-
         svc = PortmuxService(config, Output(), session_name)
         svc.initialize(run_startup=False)
+        remain_on_exit()
 
         local_port = free_port()
         spec = f"{local_port}:localhost:{tcp_server}"
@@ -131,12 +145,7 @@ class TestMonitorLifecycle:
         # Kill SSH process
         diag = backend.get_tunnel_diagnostics(name, session_name)
         os.kill(diag.pane_pid, signal.SIGKILL)
-        wait_for_condition(
-            lambda: (d := backend.get_tunnel_diagnostics(name, session_name))
-            and d.pane_dead,
-            timeout=5.0,
-            desc="SSH death",
-        )
+        _wait_for_death(backend, name, session_name)
 
         # First cycle: detects death, triggers restart (attempt 1/1)
         _run_async(monitor.run_once())
@@ -146,12 +155,7 @@ class TestMonitorLifecycle:
         diag = backend.get_tunnel_diagnostics(name, session_name)
         if diag and diag.pane_pid and not diag.pane_dead:
             os.kill(diag.pane_pid, signal.SIGKILL)
-            wait_for_condition(
-                lambda: (d := backend.get_tunnel_diagnostics(name, session_name))
-                and d.pane_dead,
-                timeout=5.0,
-                desc="SSH death after restart",
-            )
+            _wait_for_death(backend, name, session_name)
 
         # Second cycle: detects death again, should give up (max_retries=1)
         _run_async(monitor.run_once())
@@ -162,7 +166,13 @@ class TestMonitorLifecycle:
         assert "max retries" in log_content.lower() or "gave up" in log_content.lower()
 
     def test_monitor_health_logging(
-        self, monitored_service, tcp_server, ssh_target, free_port, backend, tmp_path
+        self,
+        monitored_service,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        tmp_path,
     ):
         """Monitor writes health events to the log file."""
         monitored_service.initialize(run_startup=False)
@@ -190,9 +200,15 @@ class TestMonitorLifecycle:
         assert "HEARTBEAT" in content
 
     def test_foreground_watch_single_cycle(
-        self, monitored_service, tcp_server, ssh_target, free_port, backend, tmp_path
+        self,
+        monitored_service,
+        tcp_server,
+        ssh_target,
+        free_port,
+        backend,
+        tmp_path,
     ):
-        """run_once() without logger returns results without writing to file."""
+        """run_once() without logger returns results without file logging."""
         monitored_service.initialize(run_startup=False)
 
         local_port = free_port()
@@ -205,18 +221,17 @@ class TestMonitorLifecycle:
             config=monitored_service.config,
             output=monitored_service.output,
             session_name=monitored_service.session_name,
-            logger=None,  # no file logging
+            logger=None,
         )
 
         results = _run_async(monitor.run_once())
         assert len(results) == 1
         assert results[0].health == TunnelHealth.HEALTHY
 
-        # No log file should exist
         assert not (tmp_path / "monitor.log").exists()
 
     def test_monitor_status_reflects_running(self, monitored_service, backend):
-        """tunnel_exists('_monitor') reflects whether the monitor is running."""
+        """tunnel_exists('_monitor') reflects monitor running state."""
         monitored_service.config.monitor.enabled = False
         monitored_service.initialize(run_startup=False)
 

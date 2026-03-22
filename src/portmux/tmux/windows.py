@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import libtmux
 from libtmux.exc import LibTmuxException, TmuxCommandNotFound
 
@@ -81,6 +83,38 @@ def kill_window(name: str, session_name: str = "portmux") -> bool:
         raise TmuxError(f"Failed to kill window '{name}': {e}")
 
 
+def _get_start_command(pane: libtmux.Pane) -> str:
+    """Get the original command used to start a pane.
+
+    Falls back to pane_current_command if start command is unavailable.
+    """
+    cmd = getattr(pane, "pane_start_command", None) or ""
+    # tmux returns start_command quoted, e.g. '"ssh -N -L ..."'
+    if cmd.startswith('"') and cmd.endswith('"'):
+        cmd = cmd[1:-1]
+    return cmd or (pane.pane_current_command or "")
+
+
+def _is_pane_dead(pane: libtmux.Pane, session_name: str, window_name: str) -> bool:
+    """Check if a pane's process has exited using tmux format variable."""
+    try:
+        result = subprocess.run(
+            [
+                "tmux",
+                "list-panes",
+                "-t",
+                f"{session_name}:{window_name}",
+                "-F",
+                "#{pane_dead}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip() == "1"
+    except Exception:
+        return bool(pane.pane_dead_status)
+
+
 def list_windows(session_name: str = "portmux") -> list[dict[str, str]]:
     """Get all windows in session with their details.
 
@@ -104,7 +138,7 @@ def list_windows(session_name: str = "portmux") -> list[dict[str, str]]:
                 {
                     "name": window.name,
                     "status": window.window_raw_flags or "",
-                    "command": pane.pane_current_command if pane else "",
+                    "command": _get_start_command(pane) if pane else "",
                 }
             )
         return windows
@@ -159,7 +193,7 @@ def get_window_diagnostics(
         return TunnelDiagnostics(
             pane_pid=int(pane.pane_pid) if pane.pane_pid else None,
             pane_current_command=pane.pane_current_command,
-            pane_dead=bool(pane.pane_dead_status),
+            pane_dead=_is_pane_dead(pane, session_name, name),
             pane_dead_status=pane.pane_dead_status,
             pane_content=pane.capture_pane(start=-20),
         )
