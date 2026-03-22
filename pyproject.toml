@@ -44,5 +44,8 @@ select = ["E", "F", "I", "W", "UP"]
 [tool.ruff.lint.isort]
 known-first-party = ["portmux"]
 
+[tool.pytest.ini_options]
+markers = ["e2e: end-to-end tests requiring Docker (tmux + SSH)"]
+
 [tool.bandit]
 exclude_dirs = ["tests"]

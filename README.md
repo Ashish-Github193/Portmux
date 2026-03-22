@@ -194,15 +194,42 @@ src/portmux/
 - **Phase 3** (done): Configuration system, profiles, startup automation
 - **Phase 4** (done): Async health check system
 - **Phase 5** (done): Background monitor daemon + health logging
-- **Phase 6** (planned): E2E tests in Docker, SSH agent awareness
-- **Phase 7** (planned): TUI mode using Rich layouts
+- **Phase 6** (done): E2E tests in Docker
+- **Phase 7** (planned): SSH agent awareness, TUI mode
 
 ### Testing
 
+```
+tests/
+├── unit/                   # 332 mocked unit tests
+│   ├── backend/            # TmuxBackend adapter
+│   ├── cli/                # Main CLI, utilities
+│   ├── commands/           # Click command wrappers
+│   ├── core/               # Config, profiles, startup
+│   ├── health/             # Checker, monitor, logger, state
+│   ├── ssh/                # Forward spec parsing, SSH commands
+│   └── tmux/               # Session, windows, diagnostics
+└── e2e/                    # 32 E2E tests (Docker, real tmux + SSH)
+    ├── scripts/            # Dockerfile, entrypoint.sh, run.sh
+    ├── session/            # Session lifecycle
+    ├── forward/            # Forward lifecycle + traffic flow
+    ├── health/             # Health checks against real tunnels
+    └── monitor/            # Monitor auto-restart, logging
+```
+
 ```bash
-uv run pytest              # all tests (332)
-uv run pytest -v           # verbose
-uv run pytest --cov=portmux  # with coverage
+uv run pytest tests/unit/     # unit tests only (332)
+uv run pytest tests/ -m "not e2e"  # same, using marker
+uv run pytest --cov=portmux   # with coverage
+```
+
+### E2E Tests
+
+Run in Docker with real tmux + sshd (no mocks):
+
+```bash
+./tests/e2e/scripts/run.sh              # build + run all E2E tests
+./tests/e2e/scripts/run.sh bash         # interactive debugging
 ```
 
 ### Requirements

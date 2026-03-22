@@ -26,4 +26,15 @@ jobs:
         run: uv sync --group dev
 
       - name: Run tests
-        run: uv run pytest --cov=portmux -v
+        run: uv run pytest --cov=portmux -v -m "not e2e"
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build E2E container
+        run: docker build -t portmux-e2e -f tests/e2e/scripts/Dockerfile .
+
+      - name: Run E2E tests
+        run: docker run --rm portmux-e2e
