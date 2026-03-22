@@ -139,22 +139,22 @@ Five-layer design:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  PRESENTATION: cli.py, commands/*, utils.py                  │
-│  Click commands, Rich tables, argument validation            │
+│  PRESENTATION: cli.py, commands/*, utils.py                 │
+│  Click commands, Rich tables, argument validation           │
 ├─────────────────────────────────────────────────────────────┤
-│  SERVICE LAYER: core/service.py, core/config.py,             │
-│                 core/profiles.py, core/startup.py,           │
-│                 core/output.py                               │
-│  Orchestration, configuration, profile merging, output       │
+│  SERVICE LAYER: core/service.py, core/config.py,            │
+│                 core/profiles.py, core/startup.py,          │
+│                 core/output.py                              │
+│  Orchestration, configuration, profile merging, output      │
 ├─────────────────────────────────────────────────────────────┤
-│  FORWARD LOGIC: ssh/forwards.py                              │
-│  SSH command building, port spec parsing, forward lifecycle  │
+│  FORWARD LOGIC: ssh/forwards.py                             │
+│  SSH command building, port spec parsing, forward lifecycle │
 ├─────────────────────────────────────────────────────────────┤
-│  BACKEND ABSTRACTION: backend/protocol.py, backend/tmux.py   │
-│  TunnelBackend Protocol + TmuxBackend adapter                │
+│  BACKEND ABSTRACTION: backend/protocol.py, backend/tmux.py  │
+│  TunnelBackend Protocol + TmuxBackend adapter               │
 ├─────────────────────────────────────────────────────────────┤
-│  EXECUTION: tmux/session.py, tmux/windows.py                 │
-│  tmux operations via libtmux                                 │
+│  EXECUTION: tmux/session.py, tmux/windows.py                │
+│  tmux operations via libtmux                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
