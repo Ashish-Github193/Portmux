@@ -135,27 +135,38 @@ portmux profile active                # show current profile
 
 ## Architecture
 
-Five-layer design:
+```mermaid
+graph TD
+    User([User]) --> CLI
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  PRESENTATION: cli.py, commands/*, utils.py                 │
-│  Click commands, Rich tables, argument validation           │
-├─────────────────────────────────────────────────────────────┤
-│  SERVICE LAYER: core/service.py, core/config.py,            │
-│                 core/profiles.py, core/startup.py,          │
-│                 core/output.py                              │
-│  Orchestration, configuration, profile merging, output      │
-├─────────────────────────────────────────────────────────────┤
-│  FORWARD LOGIC: ssh/forwards.py                             │
-│  SSH command building, port spec parsing, forward lifecycle │
-├─────────────────────────────────────────────────────────────┤
-│  BACKEND ABSTRACTION: backend/protocol.py, backend/tmux.py  │
-│  TunnelBackend Protocol + TmuxBackend adapter               │
-├─────────────────────────────────────────────────────────────┤
-│  EXECUTION: tmux/session.py, tmux/windows.py                │
-│  tmux operations via libtmux                                │
-└─────────────────────────────────────────────────────────────┘
+    subgraph Presentation
+        CLI[cli.py + commands/]
+    end
+
+    subgraph Core
+        Service[PortmuxService]
+        Config[Config + Profiles]
+        Health[Health Monitor]
+    end
+
+    subgraph Infrastructure
+        Forwards[ssh/forwards.py]
+        Backend[TunnelBackend Protocol]
+    end
+
+    subgraph Execution
+        Tmux[tmux/ via libtmux]
+    end
+
+    CLI --> Service
+    Service --> Config
+    Service --> Health
+    Service --> Forwards
+    Forwards --> Backend
+    Health --> Backend
+    Backend --> Tmux
+    Tmux --> tmux_server[(tmux server)]
+    Forwards -.-> ssh_process([SSH process])
 ```
 
 ## Source Layout
