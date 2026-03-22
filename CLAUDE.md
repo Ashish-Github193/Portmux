@@ -104,7 +104,28 @@ class TunnelBackend(Protocol):
 
 ## Testing
 
-332 tests across 20 files. All unit tests — tmux/subprocess calls are mocked.
+364 tests total: 332 unit tests (mocked) + 32 E2E tests (Docker, real tmux + SSH).
+
+Test directory mirrors source layout:
+
+```
+tests/
+├── unit/                   # mocked — no real tmux/SSH
+│   ├── backend/            # test_tmux_backend.py
+│   ├── cli/                # test_cli.py, test_utils.py
+│   ├── commands/           # test_{add,init,list,monitor,profile,refresh,remove,status,watch}.py
+│   ├── core/               # test_config.py, test_profiles.py, test_startup.py
+│   ├── health/             # test_background_monitor.py, test_checker.py, test_logger.py, test_monitor.py, test_state.py
+│   ├── ssh/                # test_forwards.py
+│   └── tmux/               # test_session.py, test_window_diagnostics.py, test_windows.py
+└── e2e/                    # real tmux + SSH in Docker
+    ├── scripts/            # Dockerfile, entrypoint.sh, run.sh
+    ├── conftest.py         # fixtures: session_name, free_port, tcp_server, polling helpers
+    ├── session/            # test_lifecycle.py (init, destroy, force, isolation)
+    ├── forward/            # test_lifecycle.py (add/remove/refresh, traffic flow)
+    ├── health/             # test_checks.py (healthy/dead/unhealthy, diagnostics)
+    └── monitor/            # test_lifecycle.py (auto-restart, max retries, logging)
+```
 
 ### Mock Patterns
 
@@ -136,19 +157,18 @@ backend.create_tunnel.return_value = True
 result = add_forward("L", "8080:localhost:80", "user@host", backend=backend)
 ```
 
-### E2E Tests (planned)
+### E2E Tests
 
-Docker container with real tmux + sshd. No mocks. See README.md for details.
+Docker container with real tmux + sshd. No mocks. Run via `./tests/e2e/scripts/run.sh`.
 
-```
-tests/e2e/
-├── Dockerfile
-├── conftest.py
-├── test_session_lifecycle.py
-├── test_forward_lifecycle.py
-├── test_monitor_lifecycle.py
-└── test_health_checks.py
-```
+E2E tests use `@pytest.mark.e2e` marker — unit test runs exclude them with `-m "not e2e"`.
+
+Key fixtures in `tests/e2e/conftest.py`:
+- `session_name` — unique per test, auto-teardown
+- `portmux_service` / `monitored_service` — real `TmuxBackend`, temp log path
+- `tcp_server` — threaded echo server on dynamic port
+- `free_port` — factory returning unused ephemeral ports
+- `wait_for_port()` / `wait_for_condition()` — polling helpers (no fixed sleeps)
 
 ## Code Style
 
