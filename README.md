@@ -249,6 +249,13 @@ Run in Docker with real tmux + sshd (no mocks):
 - tmux installed
 - SSH access to remote servers
 
+## Known Issues
+
+- **Health status shows no reason** — `portmux status` and `portmux watch` display "Unhealthy" or "Dead" but don't show why. The health checker produces a detail string (e.g. "SSH alive but port not responding", "Detected: Connection refused") but it's dropped before reaching the user. The detail is logged at WARNING level in the health log, but `status` only surfaces ERROR-level entries.
+- **No SSH agent awareness** — PortMUX checks if key files exist but doesn't verify they're usable (loaded in agent, passphrase-free). A passphrase-protected key causes the tunnel to silently hang.
+- **Startup command errors are invisible** — stderr/stdout from failed startup commands isn't captured or shown.
+- **No cross-session port conflict detection** — two profiles can bind the same local port in different sessions, causing silent failures.
+
 ## License
 
 This project is open source.
