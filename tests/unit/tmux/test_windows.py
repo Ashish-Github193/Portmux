@@ -15,6 +15,7 @@ def _make_window(name, flags="", command="ssh"):
     window.window_raw_flags = flags
     pane = MagicMock()
     pane.pane_current_command = command
+    pane.pane_start_command = command
     window.active_pane = pane
     return window
 

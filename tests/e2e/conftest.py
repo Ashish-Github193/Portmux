@@ -156,3 +156,24 @@ def ssh_target():
 def ssh_identity():
     """Path to the test SSH identity file."""
     return "/root/.ssh/id_ed25519"
+
+
+@pytest.fixture()
+def remain_on_exit():
+    """Set remain-on-exit globally so panes stay after process exits.
+
+    Call the returned function after initialize() but before creating forwards.
+    Cleans up the global option on teardown.
+    """
+
+    def _enable():
+        subprocess.run(
+            ["tmux", "set-option", "-g", "remain-on-exit", "on"],
+            capture_output=True,
+        )
+
+    yield _enable
+    subprocess.run(
+        ["tmux", "set-option", "-g", "-u", "remain-on-exit"],
+        capture_output=True,
+    )
